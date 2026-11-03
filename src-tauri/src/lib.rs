@@ -1,0 +1,30 @@
+pub mod ai_bridge;
+pub mod commands;
+pub mod core_engine;
+pub mod vcs;
+
+use commands::{ai_cmd, fs_cmd, linter_cmd, lore_cmd};
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            fs_cmd::read_project_tree,
+            fs_cmd::read_markdown_file,
+            fs_cmd::write_markdown_file,
+            lore_cmd::list_entities,
+            lore_cmd::upsert_entity,
+            lore_cmd::find_entity_usages,
+            lore_cmd::refactor_rename_entity,
+            linter_cmd::run_continuity_linter,
+            linter_cmd::detect_implicit_entities,
+            ai_cmd::mcp_execute_tool,
+            ai_cmd::propose_inline_diff,
+            ai_cmd::search_lore_rag,
+            vcs::snapshot::create_snapshot,
+            vcs::snapshot::list_snapshots,
+            vcs::diff_engine::compute_prose_diff,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running NovelForge IDE tauri application");
+}
