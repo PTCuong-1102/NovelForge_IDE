@@ -5,10 +5,8 @@ import {
   Edit3,
   Check,
   X,
-  AlertTriangle,
   CheckSquare,
   Square,
-  FileText,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
@@ -84,7 +82,10 @@ export const RefactorRenameModal: React.FC = () => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: 'var(--border-color)' }}>
+        <div
+          className="p-4 border-b flex justify-between items-center"
+          style={{ borderColor: 'var(--border-color)' }}
+        >
           <div className="flex items-center gap-2">
             <Edit3 size={18} className="text-accent" />
             <span className="font-bold text-sm text-primary">
@@ -100,7 +101,10 @@ export const RefactorRenameModal: React.FC = () => {
         </div>
 
         {/* Input Form */}
-        <div className="p-4 border-b space-y-3" style={{ borderColor: 'var(--border-color)' }}>
+        <div
+          className="p-4 border-b space-y-3"
+          style={{ borderColor: 'var(--border-color)' }}
+        >
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] font-semibold text-muted block mb-1">
@@ -110,18 +114,18 @@ export const RefactorRenameModal: React.FC = () => {
                 type="text"
                 disabled
                 value={targetEntity.title}
-                className="w-full bg-elevated/40 border border-border rounded px-2.5 py-1.5 text-muted font-medium"
+                className="w-full bg-elevated/60 border border-border rounded-lg px-2.5 py-1.5 text-muted font-medium"
               />
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-accent block mb-1">
+              <label className="text-[11px] font-bold text-accent block mb-1">
                 Tên nhân vật mới:
               </label>
               <input
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full bg-elevated border border-accent/60 rounded px-2.5 py-1.5 text-primary font-bold focus:outline-none"
+                className="w-full bg-elevated border border-accent rounded-lg px-2.5 py-1.5 text-primary font-bold focus:outline-none"
               />
             </div>
           </div>
@@ -138,9 +142,9 @@ export const RefactorRenameModal: React.FC = () => {
                     type="text"
                     disabled
                     value={pair.from}
-                    className="w-1/2 bg-elevated/40 border border-border rounded px-2 py-1 text-muted"
+                    className="w-1/2 bg-elevated/60 border border-border rounded-lg px-2 py-1 text-muted"
                   />
-                  <span>→</span>
+                  <span className="text-muted font-bold">→</span>
                   <input
                     type="text"
                     value={pair.to}
@@ -149,7 +153,7 @@ export const RefactorRenameModal: React.FC = () => {
                       updated[idx].to = e.target.value;
                       setAliasPairs(updated);
                     }}
-                    className="w-1/2 bg-elevated border border-border rounded px-2 py-1 text-primary focus:outline-none"
+                    className="w-1/2 bg-elevated border border-border rounded-lg px-2 py-1 text-primary font-medium focus:outline-none"
                   />
                 </div>
               ))}
@@ -157,16 +161,16 @@ export const RefactorRenameModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Diff Preview Matches */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 select-text">
+        {/* Diff Preview Matches (High-Contrast Adaptive Tokens) */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2.5 select-text">
           <div className="flex justify-between items-center text-xs mb-2">
-            <span className="font-semibold text-primary">
+            <span className="font-bold text-primary">
               Tìm thấy {previewMatches.length} vị trí xuất hiện trong{' '}
               {chapters.length} chương:
             </span>
             <button
               onClick={selectAll}
-              className="text-accent hover:underline font-medium"
+              className="text-accent hover:underline font-semibold"
             >
               Chọn tất cả
             </button>
@@ -179,10 +183,10 @@ export const RefactorRenameModal: React.FC = () => {
               <div
                 key={m.id}
                 onClick={() => toggleSelectMatch(m.id)}
-                className="p-2.5 rounded-xl border border-border bg-elevated/30 hover:bg-elevated cursor-pointer transition-colors space-y-1"
+                className="p-3 rounded-xl border border-border bg-elevated/50 hover:bg-elevated cursor-pointer transition-colors space-y-1.5"
               >
-                <div className="flex items-center justify-between text-[11px]">
-                  <div className="flex items-center gap-1.5 font-semibold text-primary">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-primary">
                     {isChecked ? (
                       <CheckSquare size={14} className="text-accent" />
                     ) : (
@@ -192,15 +196,16 @@ export const RefactorRenameModal: React.FC = () => {
                       {m.chapter_title} (Đoạn {m.paragraph_index + 1})
                     </span>
                   </div>
-                  <span className="text-[10px] text-muted">
-                    &ldquo;{m.matched_token}&rdquo; → &ldquo;{m.replacement_token}&rdquo;
+                  <span className="text-[11px] font-mono text-muted">
+                    &ldquo;{m.matched_token}&rdquo; → &ldquo;
+                    {m.replacement_token}&rdquo;
                   </span>
                 </div>
 
-                <div className="text-[11px] font-serif leading-relaxed text-muted line-through">
+                <div className="p-2 rounded-lg border semantic-error-box text-xs font-serif leading-relaxed line-through">
                   {m.original_sentence}
                 </div>
-                <div className="text-[11px] font-serif leading-relaxed text-emerald-300 font-medium">
+                <div className="p-2 rounded-lg border semantic-success-box text-xs font-serif leading-relaxed font-medium">
                   {m.preview_sentence}
                 </div>
               </div>
@@ -209,10 +214,13 @@ export const RefactorRenameModal: React.FC = () => {
         </div>
 
         {/* Footer Actions */}
-        <div className="p-3 border-t flex justify-end gap-2" style={{ borderColor: 'var(--border-color)' }}>
+        <div
+          className="p-3 border-t flex justify-end gap-2"
+          style={{ borderColor: 'var(--border-color)' }}
+        >
           <button
             onClick={closeRefactorModal}
-            className="px-3 py-1.5 rounded-lg bg-elevated hover:bg-elevated/80 text-muted hover:text-primary transition-colors font-medium"
+            className="px-3 py-1.5 rounded-lg bg-elevated hover:opacity-90 border border-border text-primary transition-colors font-semibold"
           >
             Hủy bỏ
           </button>

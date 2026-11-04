@@ -13,7 +13,6 @@ import {
 import {
   CenterTabType,
   OpenWorkbenchTab,
-  useWorkspaceStore,
 } from '@/stores/useWorkspaceStore';
 
 interface TabBarProps {
@@ -28,15 +27,15 @@ interface TabBarProps {
 const getTabIcon = (type: CenterTabType) => {
   switch (type) {
     case 'chapter':
-      return <FileText size={14} className="text-amber-500" />;
+      return <FileText size={14} className="semantic-warning-text shrink-0" />;
     case 'lore-entity':
-      return <User size={14} className="text-emerald-500" />;
+      return <User size={14} className="semantic-success-text shrink-0" />;
     case 'lore-database':
-      return <Table size={14} className="text-blue-500" />;
+      return <Table size={14} className="semantic-info-text shrink-0" />;
     case 'relationship-graph':
-      return <Share2 size={14} className="text-purple-500" />;
+      return <Share2 size={14} className="semantic-success-text shrink-0" />;
     case 'timeline-board':
-      return <Calendar size={14} className="text-indigo-500" />;
+      return <Calendar size={14} className="semantic-info-text shrink-0" />;
   }
 };
 
@@ -58,29 +57,30 @@ export const TabBar: React.FC<TabBarProps> = ({
     >
       {/* Scrollable Tab List */}
       <div className="flex items-center h-full overflow-x-auto no-scrollbar">
-        {tabs.map((tab) => {
+        {tabs.filter(Boolean).map((tab) => {
           const isActive = tab.id === activeTabId;
           return (
             <div
               key={tab.id}
               onClick={() => onSelectTab(tab.id)}
-              className={`group flex items-center gap-1.5 px-3 h-full cursor-pointer border-r transition-colors ${
+              className={`group flex items-center gap-2 px-3.5 h-full cursor-pointer border-r transition-colors ${
                 isActive
-                  ? 'bg-canvas text-primary font-medium border-t-2 border-t-accent'
-                  : 'text-muted hover:text-primary hover:bg-elevated/40'
+                  ? 'bg-paper text-primary font-semibold border-t-2 border-t-accent'
+                  : 'text-muted hover:text-primary hover:bg-elevated/50'
               }`}
               style={{
                 borderColor: 'var(--border-color)',
               }}
             >
               {getTabIcon(tab.type)}
-              <span className="truncate max-w-[160px]">{tab.title}</span>
+              <span className="truncate max-w-[180px]">{tab.title}</span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onCloseTab(tab.id);
                 }}
                 className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-elevated text-muted hover:text-primary transition-opacity"
+                title="Đóng tab"
               >
                 <X size={12} />
               </button>
@@ -95,9 +95,9 @@ export const TabBar: React.FC<TabBarProps> = ({
           <button
             onClick={onToggleSplit}
             title="Chia đôi màn hình song song (Ctrl+\)"
-            className="p-1 hover:bg-elevated rounded text-muted hover:text-primary transition-colors"
+            className="p-1.5 hover:bg-elevated rounded-lg text-muted hover:text-primary transition-colors"
           >
-            <Columns size={15} />
+            <Columns size={14} />
           </button>
         </div>
       )}

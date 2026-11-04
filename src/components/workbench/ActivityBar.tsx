@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { LeftActivityView, useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useEditorStore } from '@/stores/useEditorStore';
+import { runContinuityLinterEngine } from '@/lib/tauri-bridge';
 
 interface ActivityItem {
   id: LeftActivityView;
@@ -22,9 +23,15 @@ interface ActivityItem {
 }
 
 export const ActivityBar: React.FC = () => {
-  const { activeActivity, setActiveActivity, theme, setTheme } =
+  const { activeActivity, setActiveActivity, theme, setTheme, chapters, entities } =
     useWorkspaceStore();
-  const { openCommandPalette } = useEditorStore();
+  const { openCommandPalette, ignoredIssueIds } = useEditorStore();
+
+  const totalIssues = chapters.reduce(
+    (acc, ch) =>
+      acc + runContinuityLinterEngine(ch, entities, ignoredIssueIds).length,
+    0
+  );
 
   const activities: ActivityItem[] = [
     {
@@ -56,7 +63,7 @@ export const ActivityBar: React.FC = () => {
       label: 'Continuity Inspector',
       icon: ShieldAlert,
       shortcut: 'Ctrl+Shift+M',
-      badge: 2,
+      badge: totalIssues,
     },
   ];
 
@@ -72,7 +79,7 @@ export const ActivityBar: React.FC = () => {
 
   return (
     <aside
-      className="w-12 h-full flex flex-col justify-between items-center py-2 select-none border-r z-30"
+      className="w-12 h-full flex flex-col justify-between items-center py-2.5 select-none border-r z-30"
       style={{
         backgroundColor: 'var(--bg-panel)',
         borderColor: 'var(--border-color)',
@@ -80,19 +87,7 @@ export const ActivityBar: React.FC = () => {
       aria-label="Activity Bar"
     >
       {/* Top Icons */}
-      <div className="flex flex-col items-center gap-1 w-full">
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs mb-2 shadow-sm cursor-pointer"
-          style={{
-            backgroundColor: 'var(--accent-color)',
-            color: '#FFFFFF',
-          }}
-          title="NovelForge IDE v1.0.0"
-          onClick={() => openCommandPalette('commands')}
-        >
-          NF
-        </div>
-
+      <div className="flex flex-col items-center gap-1.5 w-full">
         {activities.map((act) => {
           const Icon = act.icon;
           const isActive = activeActivity === act.id;
@@ -102,20 +97,20 @@ export const ActivityBar: React.FC = () => {
               key={act.id}
               onClick={() => setActiveActivity(act.id)}
               title={`${act.label} (${act.shortcut})`}
-              className={`relative w-10 h-10 rounded-md flex items-center justify-center transition-all ${
+              className={`relative w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
                 isActive
-                  ? 'bg-elevated text-primary font-semibold shadow-inner'
-                  : 'text-muted hover:text-primary hover:bg-elevated/40'
+                  ? 'bg-elevated text-primary font-semibold shadow-sm'
+                  : 'text-muted hover:text-primary hover:bg-elevated/50'
               }`}
               style={{
                 borderLeft: isActive
-                  ? '2px solid var(--accent-color)'
-                  : '2px solid transparent',
+                  ? '2.5px solid var(--accent-color)'
+                  : '2.5px solid transparent',
               }}
             >
-              <Icon size={19} />
-              {act.badge && act.badge > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] flex items-center justify-center font-bold">
+              <Icon size={18} />
+              {act.badge !== undefined && act.badge > 0 && (
+                <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 bg-red-600 text-white rounded-full text-[10px] flex items-center justify-center font-bold">
                   {act.badge}
                 </span>
               )}
@@ -125,11 +120,11 @@ export const ActivityBar: React.FC = () => {
       </div>
 
       {/* Bottom Icons: Theme toggle & Settings */}
-      <div className="flex flex-col items-center gap-1 w-full">
+      <div className="flex flex-col items-center gap-1.5 w-full">
         <button
           onClick={cycleTheme}
           title={`Chuyển giao diện: Hiện tại là ${theme} (Bấm để đổi Obsidian / Parchment / Daylight)`}
-          className="w-10 h-10 rounded-md flex items-center justify-center text-muted hover:text-primary hover:bg-elevated/50 transition-colors"
+          className="w-10 h-10 rounded-lg flex items-center justify-center text-muted hover:text-primary hover:bg-elevated/60 transition-colors"
         >
           <Sparkles size={17} />
         </button>
@@ -137,7 +132,7 @@ export const ActivityBar: React.FC = () => {
         <button
           onClick={() => openCommandPalette('commands')}
           title="Thiết lập & Lệnh (Ctrl+Shift+P)"
-          className="w-10 h-10 rounded-md flex items-center justify-center text-muted hover:text-primary hover:bg-elevated/50 transition-colors"
+          className="w-10 h-10 rounded-lg flex items-center justify-center text-muted hover:text-primary hover:bg-elevated/60 transition-colors"
         >
           <Settings size={18} />
         </button>

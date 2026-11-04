@@ -1,192 +1,85 @@
 # TÀI LIỆU ĐẶC TẢ THIẾT KẾ GIAO DIỆN & TRẢI NGHIỆM NGƯỜI DÙNG (UI/UX SPECIFICATION)
 **Dự án:** NovelForge IDE  
-**Phiên bản:** 1.0.0  
-**Triết lý Thiết kế:** *"Tập trung như Notion, Quyền năng như VS Code, Sâu sắc như IntelliJ IDEA"*  
-**Thư viện UI cốt lõi:** TailwindCSS + Shadcn UI + Dockview + TipTap + React Flow
+**Phiên bản:** 2.0.0 (Editorial Atelier & Precision IDE)  
+**Triết lý Thiết kế:** *"Tập trung như Notion, Quyền năng như VS Code, Sâu sắc như IntelliJ IDEA, Tinh tế như Trang Sách Xuất Bản"*  
+**Thư viện UI cốt lõi:** TailwindCSS + Next.js Google Fonts (`Literata`, `Plus Jakarta Sans`, `JetBrains Mono`) + Dockview + React Flow
 
 ---
 
 ## 1. TRIẾT LÝ THIẾT KẾ & HỆ THỐNG MÀU SẮC (DESIGN SYSTEM)
 
-Khác với IDE lập trình chỉ ưu tiên hiển thị mật độ thông tin dày đặc, **NovelForge IDE** phải cân bằng giữa **Chế độ Quản trị Đại cục (Architect Mode)** và **Chế độ Nhập tâm Sáng tác (Zen Writing Mode)** để không làm mỏi mắt tác giả khi nhìn màn hình 6–8 tiếng mỗi ngày.
+Khác với IDE lập trình chỉ ưu tiên hiển thị mật độ thông tin dày đặc, **NovelForge IDE** phân tách rõ rệt giữa **Bề mặt Trang Giấy Văn Học (`--bg-paper`)** ở trung tâm và **Khung Điều Khiển Kỹ Thuật (`--bg-panel` / `--bg-canvas`)** ở xung quanh để không làm mỏi mắt tác giả khi nhìn màn hình 6–8 tiếng mỗi ngày, đồng thời **đảm bảo độ tương phản chuẩn WCAG AAA (không có bất kỳ chữ nào bị chìm trong nền ở bất cứ theme nào)**.
 
-### 1.1. Hệ thống 3 Chủ đề Giao diện (Themes)
-1. **Obsidian Ink (Dark Mode - Mặc định cho quản lý cấu trúc):**
-   * Nền chính (Canvas): `#0F1115` | Nền khung phụ (Sidebar/Panel): `#161920`
-   * Văn bản chính: `#E2E8F0` | Văn bản mờ (Muted): `#64748B`
-2. **Warm Parchment (Sepia Mode - Tối ưu chống mỏi mắt khi viết đêm/ngày):**
-   * Nền chính (Canvas): `#FBF8F1` | Nền khung phụ: `#F3EFE6`
-   * Văn bản chính: `#2C2623` (Màu mực tàu dịu) | Văn bản mờ: `#78716C`
-3. **Daylight Paper (Clean Light Mode - Phong cách Notion):**
-   * Nền chính: `#FFFFFF` | Nền khung phụ: `#F8FAFC`
-   * Văn bản chính: `#0F172A`
+### 1.1. Hệ thống 3 Chủ đề Giao diện (Themes) & Tương Phản Thích Ứng
+1. **Obsidian Ink (Dark Mode - Mặc định cho quản lý cấu trúc & làm việc đêm):**
+   * Nền xung quanh (`--bg-canvas`): `#0B0D11` | Nền khung phụ (`--bg-panel`): `#12151C` | Bề mặt trang giấy (`--bg-paper`): `#131720`
+   * Văn bản chính (`--text-primary`): `#F1F5F9` | Văn bản phụ (`--text-muted`): `#94A3B8`
+   * Màu ngữ nghĩa (Semantic Text): Sáng rõ trên nền tối (`#FCA5A5` cho lỗi, `#FDE68A` cho cảnh báo, `#6EE7B7` cho thành công/AI).
+2. **Warm Parchment (Sepia Mode - Tối ưu chống mỏi mắt khi sáng tác dài kỳ):**
+   * Nền xung quanh (`--bg-canvas`): `#EFE9DC` | Nền khung phụ (`--bg-panel`): `#E6DEC8` | Bề mặt trang giấy (`--bg-paper`): `#FBF8F1`
+   * Văn bản chính (`--text-primary`): `#231D18` (Màu mực tàu đậm) | Văn bản phụ (`--text-muted`): `#574C41`
+   * Màu ngữ nghĩa (Semantic Text): Mực đậm độ tương phản cao (`#991B1B` cho lỗi, `#78350F` cho cảnh báo, `#065F46` cho thành công/AI).
+3. **Daylight Paper (Clean Light Mode - Phong cách Notion / Editorial):**
+   * Nền xung quanh (`--bg-canvas`): `#F1F5F9` | Nền khung phụ (`--bg-panel`): `#F8FAFC` | Bề mặt trang giấy (`--bg-paper`): `#FFFFFF`
+   * Văn bản chính (`--text-primary`): `#0F172A` | Văn bản phụ (`--text-muted`): `#475569`
+   * Màu ngữ nghĩa (Semantic Text): Đậm sắc nét (`#991B1B` cho lỗi, `#92400E` cho cảnh báo, `#065F46` cho thành công/AI).
 
-### 1.2. Bảng màu Ngữ nghĩa (Semantic Colors cho Linter & AI)
-* **Entity Mention (`@Nhân_Vật`):** Xanh ngọc lục bảo (`#10B981` nền mờ $12\%$).
-* **Location/Lore Tag (`#Địa_Danh`):** Xanh dương (`#3B82F6` nền mờ $12\%$).
-* **Continuity Error (Lỗi mâu thuẫn cốt truyện nghiêm trọng):** Gạch chân răng cưa Đỏ san hô (`#EF4444`).
-* **Style/Pacing Warning (Cảnh báo lặp từ, câu quá dài):** Gạch chân răng cưa Vàng hổ phách (`#F59E0B`).
-* **AI Diff - Đoạn thêm mới:** Nền xanh lá nhạt (`rgba(34, 197, 94, 0.15)`), viền trái `#22C55E`.
-* **AI Diff - Đoạn bị xóa:** Nền đỏ nhạt (`rgba(239, 68, 68, 0.15)`), chữ gạch ngang.
+### 1.2. Bảng màu Ngữ nghĩa Thích ứng (Adaptive Semantic Tokens)
+* **Entity Mention (`@Nhân_Vật`):** Sử dụng `--entity-pill-bg` và `--entity-pill-text` (`#34D399` trên nền tối, `#065F46` trên nền giấy sáng/sepia).
+* **Location/Lore Tag (`#Địa_Danh`):** Sử dụng `--lore-pill-bg` và `--lore-pill-text` (`#60A5FA` trên nền tối, `#1E40AF` trên nền giấy sáng/sepia).
+* **Continuity Error (Lỗi mâu thuẫn cốt truyện nghiêm trọng):** Gạch chân răng cưa Đỏ san hô (`#EF4444`) kèm hộp thông báo `.semantic-error-box`.
+* **Style/Pacing Warning (Cảnh báo lặp từ, câu quá dài):** Gạch chân răng cưa Vàng hổ phách (`#F59E0B`) kèm hộp thông báo `.semantic-warning-box`.
+* **AI Diff Inline Card:** Sử dụng `.semantic-error-box` (đoạn gốc gạch ngang) và `.semantic-success-box` (đoạn đề xuất mới).
 
-### 1.3. Hệ thống Phông chữ (Typography)
-* **UI & Sidebar & Inspector (Sans-serif):** `Inter` hoặc `Plus Jakarta Sans` (cỡ chữ $12\text{px} - 14\text{px}$).
-* **Trình soạn thảo Bản thảo (Prose Serif/Sans tùy chọn):** `Literata`, `Merriweather`, hoặc `Charter` (Tối ưu hóa dấu tiếng Việt, cỡ chữ $16\text{px} - 20\text{px}$, chiều cao dòng `line-height: 1.75`, độ rộng tối đa một dòng `max-width: 68ch` để mắt không phải đảo quá xa).
-* **Code / Markdown Raw / AI Terminal (Monospace):** `JetBrains Mono` (cỡ chữ $13\text{px}$).
+### 1.3. Hệ thống Phông chữ Tiếng Việt (Vietnamese Typography)
+* **UI & Sidebar & Inspector (`--font-sans`):** `Plus Jakarta Sans` (hỗ trợ dấu tiếng Việt sắc nét ở cỡ chữ `12px - 14px`).
+* **Trình soạn thảo Bản thảo (`--font-serif`):** `Literata` (Font serif chuyên biệt cho sách điện tử dài kỳ, xử lý hoàn hảo dấu chồng tiếng Việt như *ế, ắ, ộ, ử*, cỡ chữ tùy chỉnh `14px - 26px`, `line-height: 1.85`, hỗ trợ thụt đầu dòng văn học `text-indent: 1.75em`).
+* **Code / Markdown Raw / AI Terminal (`--font-mono`):** `JetBrains Mono` (cỡ chữ `12px - 13px`).
 
 ---
 
 ## 2. BỐ CỤC TỔNG THỂ WORKBENCH (MASTER WIREFRAME)
 
-Giao diện chính được chia làm **6 vùng không gian (Zones)** có thể đóng/mở hoặc kéo giãn linh hoạt bằng phím tắt:
+Giao diện chính gồm **Top Workbench Header Bar**, **Left Activity Bar**, **Collapsible Sidebar**, **Elevated Paper Canvas Editor**, **Right AI & MCP Hub**, và **Bottom Status Bar**:
 
 ```text
-+--------------------------------------------------------------------------------------------------+
-| [NovelForge]  File  Edit  View  Lore  AI-Agent  Publish     [🔍 Tìm nhanh / Lệnh (Ctrl+P)]  [-][x]|
-+----+--------------------+----------------------------------------------+-------------------------+
-|    | EXPLORER / LORE    | [📄 Ch.08: Đêm Mưa (x)] [👤 Lâm Vũ Linh (x)] | 🤖 AI AGENT & INSPECTOR |
-| 📚 |--------------------|----------------------------------------------|-------------------------|
-|    | ▼ 📁 Bản Thảo      |  Chương 8: Đêm Mưa Tại Bến Cảng             | [Composer] [Cline] [MCP]|
-| 🧬 |   ▼ 📁 Hồi 1       |  ⏱️ Năm 2026 | 📍 #Bến_Cảng_Đông | 👁️ POV: Linh|-------------------------|
-|    |     📄 Ch.01       |  ------------------------------------------  | 🎯 Ngữ cảnh đang ghim:  |
-| 🔍 |     📄 Ch.08 (Đang)|                                              | [@Lâm Vũ Linh] [Ch.07]  |
-|    | ▼ 🧬 Lorebook      |  Mưa như trút nước xuống [#Bến_Cảng_Đông].   |-------------------------|
-| 🌿 |   👤 Nhân vật (24) |  [@Lâm Vũ Linh] siết chặt khẩu súng trong    | 💬 Tác vụ AI (OpenCode):|
-|    |   🗺️ Địa danh (12) |  tay. Cô không ngờ [Trần Hạo] lại xuất hiện  | "Viết tiếp cảnh đối đầu |
-| 🤖 |   ⚔️ Vật phẩm (08) |                     ~~~~~~~~~                |  nhưng giữ nhịp độ dồn  |
-|    |--------------------|                     (⚠️ Lỗi: Đã chết ở Ch.5) |  dập, ít mô tả rườm rà."|
-| 📊 | ⚠️ CẢNH BÁO (2)    |                                              |                         |
-|    | • Ch.08: Trần Hạo  |  +----------------------------------------+  | ✅ Đã tra cứu Lorebook  |
-|    |   đã chết ở Ch.05  |  | 🤖 Đề xuất từ AI (Cline / Antigravity):|  | ✍️ Đang đề xuất 1 đoạn  |
-|    | • Ch.08: Lặp từ    |  | - Cô bước lùi lại phía sau thùng hàng. |  |    văn tại dòng 42...   |
-| ⚙️ |   "lạnh lẽo" (4x)  |  | + Linh lách người nấp sau thùng hàng   |  |                         |
-|    |                    |  | + rỉ sét, hơi thở dồn dập hòa vào mưa. |  | [Nhập lệnh hoặc /...]   |
-|    |                    |  |          [✓ Chấp nhận (Tab)] [✕ Từ chối]|  | [Gửi ⏎] [🎙️] [📎 Ghim] |
-+----+--------------------+--+----------------------------------------+--+-------------------------+
-| 🌿 Nhánh: main (Đã lưu) | ⚡ MCP: 3 Agents Connected | ⚠️ 1 Lỗi, 1 Cảnh báo | 📝 3,420 từ | 🧘 Zen|
-+--------------------------------------------------------------------------------------------------+
++------------------------------------------------------------------------------------------------------+
+| [✨ NovelForge] Huyết Cảng 2026 › Hồi 1 › Ch.08   [🔍 Tìm nhanh / Lệnh (Ctrl+P)]   [🌙|📜|☀️] [◧][◨] |
++----+----------------------+------------------------------------------------+-------------------------+
+|    | EXPLORER / LORE      | [📄 Ch.08: Đêm Mưa (x)] [👤 Lâm Vũ Linh (x)]   | 🤖 AI AGENT & INSPECTOR |
+| 📚 |----------------------|------------------------------------------------|-------------------------|
+|    | ▼ 📁 Hồi 1           |  [Chèn/Lệnh (/)] [***] [Thụt dòng] [Literata]  | [Composer] [Bridge][MCP]|
+| 🧬 |   📄 Ch.01           |  +------------------------------------------+  |-------------------------|
+|    |   📄 Ch.08 (Đang mở) |  | [✍️ Đang biên tập] [👁️ POV: Linh] [🎯 85%]|  | 📌 Ngữ cảnh nạp tự động:|
+| 🔍 | ▼ 🧬 Lorebook        |  |                                          |  | [@Lâm Vũ Linh] [Ch.07]  |
+|    |   👤 Nhân vật (4)    |  | Chương 8: Đêm Mưa Tại Bến Cảng           |  |-------------------------|
+| 🌿 |   🗺️ Địa danh (2)    |  |                                          |  | 💬 Story Composer:      |
+|    |   ⚔️ Vật phẩm (1)    |  |   Mưa như trút nước xuống #Bến Cảng Đông.|  | Đã phân tích và đẩy     |
+| 🛡️ |----------------------|  | @Lâm Vũ Linh siết chặt khẩu súng. Cô     |  | Inline Diff tại đoạn 3. |
+| (2)| ⚠️ CẢNH BÁO (2)      |  | không ngờ Trần Hạo lại xuất hiện...      |  |                         |
+|    | • Ch.08: Trần Hạo    |  |           ~~~~~~~~ (Nhấp vào đoạn bất kỳ |  | [✍️ Viết tiếp dồn dập]  |
+| ⚙️ |   đã chết ở Ch.05    |  |            để sửa trực tiếp tại chỗ)     |  | [Nhập yêu cầu sáng tác] |
++----+----------------------+--+------------------------------------------+--+-------------------------+
+| 🌿 main | ✓ Đã lưu | ⚡ MCP: 3 Agents Connected      | ⚠️ 1 Lỗi, 1 Cảnh báo | 142 từ | Xuất bản | Zen |
++------------------------------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 3. CHI TIẾT TỪNG PHÂN KHU GIAO DIỆN (COMPONENT BREAKDOWN)
+## 3. CHI TIẾT CÁC NÂNG CẤP TRẢI NGHIỆM CỐT LÕI
 
-### 3.1. Thanh Hoạt động Trái (Left Activity Bar - Kiểu VS Code)
-Chiều rộng cố định $48\text{px}$, gồm các biểu tượng chuyển đổi nhanh không gian làm việc:
-1. **📚 Manuscript Explorer (`Ctrl+Shift+E`):** Cây thư mục quản lý Hồi (Act) $\rightarrow$ Chương (Chapter) $\rightarrow$ Phân cảnh (Scene). Hỗ trợ kéo-thả để đổi thứ tự chương truyện.
-2. **🧬 Lorebook & World-building (`Ctrl+Shift+L`):** Truy cập cơ sở dữ liệu Nhân vật, Địa danh, Hệ thống sức mạnh/vật phẩm, Niên biểu (Timeline).
-3. **🔍 Global Search & Find Usages (`Ctrl+Shift+F`):** Tìm kiếm toàn văn hoặc tra cứu mọi phân cảnh mà một nhân vật xuất hiện.
-4. **🌿 Story Timeline & Git Snapshots (`Ctrl+Shift+G`):** Quản lý các điểm lưu (Snapshots) và các nhánh cốt truyện thử nghiệm (*What-If Branches*).
-5. **📊 Continuity Inspector (`Ctrl+Shift+M`):** Bảng tổng hợp toàn bộ lỗi logic cốt truyện, lỗ hổng thời gian và thống kê nhịp độ văn phong.
+### 3.1. Vùng Soạn thảo Trang Giấy Liền Mạch (True In-Place Paper Canvas)
+* **Trang giấy nâng nổi (`--bg-paper`):** Đặt giữa vùng làm việc với bóng đổ dịu (`--shadow-paper`), tách biệt khỏi khung điều khiển xung quanh.
+* **Sửa trực tiếp tại chỗ (In-Place Paragraph Editing):**
+  * Mặc định hiển thị văn bản văn học liền mạch cùng các thẻ `@Nhân_vật`, `#Địa_danh` và đường gạch chân Linter.
+  * Khi tác giả **nhấp trực tiếp vào bất kỳ đoạn văn nào**, đoạn văn đó chuyển ngay sang chế độ gõ tại chỗ (giữ nguyên phông chữ `Literata`, cỡ chữ và độ thụt đầu dòng), không còn khung `<textarea>` phụ bên dưới.
+  * Nhấn `Enter` để tạo đoạn văn mới ngay bên dưới, `Esc` hoặc nhấp ra ngoài để đóng chế độ sửa và khôi phục tức thì lớp trang trí thực thể.
 
----
+### 3.2. Dải Thuộc Tính Đầu Chương Gọn Nhẹ (Compact Notion Property Pills)
+* Thu gọn các trường YAML Frontmatter thành một hàng Pill ngang ngay trên tiêu đề chương:
+  * Pill trạng thái (`Bản nháp` / `Đang biên tập` / `Hoàn tất` — bấm để đổi nhanh).
+  * Pill chọn nhanh góc nhìn (`POV: Lâm Vũ Linh`), mốc thời gian (`15/10/2026`), địa điểm (`#Bến Cảng Đông`) và thanh tiến trình mục tiêu số từ.
+  * Nút mở rộng ngăn kéo cấu hình YAML chi tiết khi cần chỉnh sửa sâu.
 
-### 3.2. Không gian Soạn thảo Trung tâm (The Hybrid Notion + IntelliJ Editor)
-Sử dụng **Dockview** cho phép chia màn hình không giới hạn (ví dụ: bên trái mở *Chương 8*, bên phải mở *Hồ sơ nhân vật Lâm Vũ Linh* hoặc *Sơ đồ quan hệ*). Bên trong mỗi tab Bản thảo bao gồm:
-
-#### A. Thanh Metadata Đầu Chương (Chapter Header Properties - Kiểu Notion)
-Nằm ngay dưới tiêu đề chương, có thể thu gọn, liên kết trực tiếp với YAML Frontmatter của file `.md`:
-* **Trạng thái:** `Bản nháp` | `Đang biên tập` | `Hoàn tất`
-* **Góc nhìn (POV):** Chọn từ danh sách nhân vật (ví dụ: `@Lâm Vũ Linh`).
-* **Mốc thời gian trong truyện:** Ngày/Tháng/Năm hoặc Sự kiện trên trục Timeline (dùng để **Continuity Linter** kiểm tra tuổi tác và trạng thái sống/chết).
-* **Địa điểm chính:** Gắn thẻ `#Địa_Danh`.
-* **Mục tiêu số từ:** Thanh tiến trình nhỏ (ví dụ: $3.420 / 4.000$ từ).
-
-#### B. Các Tương tác Thông minh Ngay trong Dòng Chữ (In-Editor Micro-Interactions)
-1. **Slash Command Menu (`/`):**
-   * Gõ `/` để mở menu nổi chia thành 3 nhóm:
-     * *Cấu trúc Văn học:* `Phân cảnh mới (***)`, `Ghi chú tác giả (Callout ẩn khi xuất bản)`, `Đoạn Hồi tưởng (Flashback Block)`.
-     * *Liên kết Thế giới quan:* `Chèn Nhân vật (@)`, `Chèn Địa danh (#)`, `Tạo nhanh thực thể Lore mới`.
-     * *Trợ lý AI tại chỗ:* `Viết tiếp 1 đoạn`, `Miêu tả chi tiết ngũ quan (Show, Don't Tell)`, `Viết lại câu văn mượt hơn`.
-2. **Thẻ Thông tin Thực thể khi Rê chuột (IntelliJ Hover Documentation Card):**
-   * Khi tác giả rê chuột vào tên `Lâm Vũ Linh` trong bài viết, một thẻ nổi xuất hiện trong $150\text{ ms}$:
-   ```text
-   +-------------------------------------------------------+
-   | [Ảnh] LÂM VŨ LINH (Biệt danh: Tiểu Linh, Số 7)        |
-   | 🟢 Còn sống | 🎂 25 tuổi (tại thời điểm Chương 8)     |
-   |-------------------------------------------------------|
-   | • Ngoại hình: Tóc ngắn ngang vai, vết sẹo nhỏ ở cổ tay|
-   | • Tính cách: Lạnh lùng, quyết đoán, sợ không gian hẹp |
-   | • Xuất hiện gần nhất: Chương 7 (Cách đây 1 chương)    |
-   |-------------------------------------------------------|
-   | [↗ Mở hồ sơ]  [🔍 Xem 42 lần xuất hiện]  [✏️ Đổi tên] |
-   +-------------------------------------------------------+
-   ```
-3. **Thẻ Báo lỗi Logic Cốt truyện (Continuity Linter Popover):**
-   * Khi rê chuột vào chữ bị gạch chân răng cưa đỏ (ví dụ: `Trần Hạo`):
-   ```text
-   +-------------------------------------------------------+
-   | ❌ MÂU THUẪN LOGIC CỐT TRUYỆN (PLOT HOLE DETECTED)    |
-   | Nhân vật "Trần Hạo" đã được đánh dấu [Tử vong] tại    |
-   | Chương 5 (Mốc thời gian: 12/10/2026).                 |
-   | Chương hiện tại đang diễn ra vào: 15/10/2026.         |
-   |-------------------------------------------------------|
-   | 💡 Giải pháp nhanh (Quick Fix - Alt+Enter):           |
-   | [1. Đánh dấu đoạn văn này là Cảnh Hồi Tưởng]          |
-   | [2. Mở hồ sơ Trần Hạo để cập nhật trạng thái]         |
-   | [3. Bỏ qua cảnh báo này cho Chương 8]                 |
-   +-------------------------------------------------------+
-   ```
-
----
-
-### 3.3. Khu vực Quản lý Thế giới quan (Lorebook & World-building Views)
-Khi người dùng mở mục **Lorebook**, vùng trung tâm hỗ trợ 3 chế độ hiển thị (View Switcher):
-1. **Chế độ Thẻ Hồ sơ (Gallery Cards):** Hiển thị danh sách nhân vật kèm ảnh đại diện (do AI tạo hoặc tải lên), vai trò, trạng thái sống/chết.
-2. **Chế độ Bảng Dữ liệu (Notion Database Table):** Cho phép lọc/sắp xếp nhân vật theo Phe phái, Tuổi, Năng lực, Số chương xuất hiện.
-3. **Chế độ Sơ đồ Quan hệ (Relationship Graph - Dùng `@xyflow/react`):**
-   * Các nút (Nodes) là Nhân vật/Tổ chức.
-   * Các cạnh nối (Edges) thể hiện mối quan hệ: *Kẻ thù, Sư đồ, Tình nhân, Phản bội*.
-   * Có thanh trượt thời gian (Timeline Slider) ở dưới đáy: Kéo thanh trượt từ Chương 1 đến Chương 20 để xem mối quan hệ giữa các nhân vật biến đổi như thế nào theo diễn biến truyện.
-
----
-
-### 3.4. Khu vực Điều phối AI Đa Tác Nhân (Right Dock: AI & MCP Hub)
-Khung bên phải rộng $340\text{px} - 450\text{px}$, được thiết kế chuyên biệt để làm việc với **Cline, OpenCode, Antigravity** và các mô hình LLM nội bộ:
-
-1. **Thanh Chuyển đổi Chế độ AI (Top Tabs):**
-   * **Tab 1 - Story Composer (Native):** Trợ lý viết lách tích hợp sẵn, tối ưu cho sáng tác, chỉnh sửa văn phong và động não ý tưởng (Brainstorming).
-   * **Tab 2 - External Agents (Cline / OpenCode / Antigravity):** Hiển thị luồng hoạt động (Action Log) của các AI Agent đang kết nối qua **MCP Server** hoặc chạy qua CLI Sidecar.
-2. **Khay Ngữ cảnh Tự động & Ghim (Context Pill Tray):**
-   * Tự động hiển thị các thực thể đang có mặt trong chương hiện tại (ví dụ: `📍 Tự động nạp: @Lâm Vũ Linh, #Bến_Cảng_Đông, Tóm tắt Chương 7`).
-   * Người dùng có thể bấm nút `+` để ghim thêm tài liệu bất kỳ vào bộ nhớ của AI.
-3. **Trình Duyệt Thay đổi Trực tiếp (Inline Diff & File Lock UI):**
-   * Khi **OpenCode** hoặc **Cline** thực hiện lệnh sửa file thông qua MCP Tool `novel_propose_edit`, một thanh điều khiển nổi xuất hiện ở góc dưới trình soạn thảo:
-     * `🤖 OpenCode đã đề xuất 3 chỉnh sửa trong Chương 8` $\rightarrow$ Nút `[Đi tới thay đổi tiếp theo (F7)]` | `[Chấp nhận tất cả]` | `[Hoàn tác tất cả]`.
-   * Nếu Agent đang ghi dữ liệu, viền của tab hiện tại phát sáng màu tím dịu kèm dòng trạng thái *"AI Agent đang biên tập đoạn 4..."* để tránh xung đột gõ phím.
-
----
-
-### 3.5. Hộp thoại Đổi tên Thực thể Toàn cục (IntelliJ Refactor Rename Modal)
-Khi tác giả bấm phím tắt `Shift + F6` trên tên một nhân vật (ví dụ: đổi tên *"Lâm Vũ Linh"* thành *"Lâm Hạ Vy"*):
-* Xuất hiện hộp thoại **Smart Literary Refactor**:
-  * Nhập tên mới: `Lâm Hạ Vy`
-  * Tự động phát hiện các tên gọi/biệt danh liên quan trong YAML (`Tiểu Linh` $\rightarrow$ gợi ý đổi thành `Tiểu Vy`).
-  * Hiển thị danh sách **Preview Changes** chia theo từng Chương (ví dụ: *Tìm thấy 142 vị trí trong 12 chương và 3 hồ sơ Lorebook*).
-  * Cho phép bỏ tích những câu văn không muốn đổi trước khi bấm **[Refactor Toàn Dự Án]**.
-
----
-
-### 3.6. Chế độ Nhập tâm Tuyệt đối (Zen / Focus Mode - `F11` hoặc `Ctrl+Shift+Z`)
-Dành cho lúc tác giả chỉ muốn viết mạch lạc mà không bị phân tâm bởi bất kỳ thông số kỹ thuật nào:
-* Ẩn toàn bộ Sidebar trái, AI Panel phải, thanh Tab và thanh Status Bar.
-* Màn hình chỉ còn lại trang giấy ở chính giữa với hiệu ứng **Typewriter Scrolling** (dòng đang gõ luôn nằm ở trung tâm màn hình theo chiều dọc) và **Paragraph Focus** (làm mờ nhẹ các đoạn văn khác, chỉ làm sáng rõ đoạn văn đang gõ).
-* Mọi cảnh báo lỗi Linter tạm thời ẩn đi và chỉ hiển thị lại khi thoát khỏi Zen Mode.
-
----
-
-## 4. HỆ THỐNG PHÍM TẮT CHUẨN HÓA (KEYBOARD-FIRST ERGONOMICS)
-
-Để mang lại tốc độ thao tác của VS Code và IntelliJ cho nhà văn:
-
-| Phím tắt (Win/Linux) | Phím tắt (macOS) | Chức năng |
-| :--- | :--- | :--- |
-| `Ctrl + P` | `Cmd + P` | Mở nhanh bất kỳ Chương truyện hoặc Hồ sơ Nhân vật nào |
-| `Ctrl + Shift + P` | `Cmd + Shift + P` | Mở **Command Palette** (Chạy mọi lệnh của IDE) |
-| `Ctrl + K` | `Cmd + K` | Gọi nhanh hộp lệnh AI Inline ngay tại vị trí con trỏ |
-| `Shift + F6` | `Shift + F6` | **Refactor Rename**: Đổi tên Nhân vật/Địa danh toàn dự án |
-| `Alt + F7` | `Opt + F7` | **Find Usages**: Xem toàn bộ các chương nhân vật này xuất hiện |
-| `Alt + Enter` | `Opt + Enter` | Hiển thị gợi ý sửa lỗi nhanh (Quick Fix) cho cảnh báo Linter |
-| `Ctrl + \` | `Cmd + \` | Chia đôi màn hình (Mở song song Bản thảo & Lorebook) |
-| `Ctrl + S` | `Cmd + S` | Lưu tức thì + Tạo nhanh 1 điểm nhớ (Git Snapshot) nếu giữ `Shift` |
-| `Ctrl + Shift + Z` | `Cmd + Shift + Z` | Bật/Tắt chế độ **Zen Mode** (Tập trung viết lách tối đa) |
+### 3.3. Thanh Tiêu Đề Toàn Cục (Top Workbench Header Bar)
+* Tích hợp đường dẫn Breadcrumb của chương đang mở, nút kích hoạt nhanh `CommandPalette (Ctrl+P)` ở trung tâm, bộ chuyển đổi trực tiếp 3 chủ đề (`🌙 Obsidian` | `📜 Parchment` | `☀️ Daylight`) và nút đóng/mở nhanh Sidebar trái & Right AI Dock.

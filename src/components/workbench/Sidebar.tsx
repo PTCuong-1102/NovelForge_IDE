@@ -15,8 +15,6 @@ import {
   AlertTriangle,
   XCircle,
   Clock,
-  Eye,
-  RefreshCw,
   RotateCcw,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
@@ -43,6 +41,7 @@ export const Sidebar: React.FC = () => {
   } = useWorkspaceStore();
 
   const {
+    activeChapterId,
     openFindUsages,
     openRefactorModal,
     ignoreIssue,
@@ -80,7 +79,7 @@ export const Sidebar: React.FC = () => {
 
   return (
     <div
-      className="w-64 h-full flex flex-col select-none border-r text-sm"
+      className="w-68 h-full flex flex-col select-none border-r text-sm"
       style={{
         backgroundColor: 'var(--bg-panel)',
         borderColor: 'var(--border-color)',
@@ -89,25 +88,28 @@ export const Sidebar: React.FC = () => {
       {/* 1. EXPLORER VIEW */}
       {activeActivity === 'explorer' && (
         <div className="flex flex-col h-full">
-          <div className="p-3 border-b flex justify-between items-center" style={{ borderColor: 'var(--border-color)' }}>
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+          <div
+            className="p-3 border-b flex justify-between items-center"
+            style={{ borderColor: 'var(--border-color)' }}
+          >
+            <span className="text-xs font-bold uppercase tracking-wider text-muted">
               Bản Thảo (Manuscript)
             </span>
             <button
               onClick={() => createChapter('')}
               title="Thêm chương mới"
-              className="p-1 hover:bg-elevated rounded text-muted hover:text-primary transition-colors"
+              className="p-1 hover:bg-elevated rounded-lg text-muted hover:text-primary transition-colors"
             >
               <Plus size={15} />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto p-2.5">
             {/* Act group */}
             <div className="mb-2">
               <div
                 onClick={() => toggleAct('act_01')}
-                className="flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer hover:bg-elevated text-xs font-semibold text-primary"
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-elevated text-xs font-bold text-primary"
               >
                 {expandedActs['act_01'] ? (
                   <ChevronDown size={14} className="text-muted" />
@@ -115,19 +117,20 @@ export const Sidebar: React.FC = () => {
                   <ChevronRight size={14} className="text-muted" />
                 )}
                 {expandedActs['act_01'] ? (
-                  <FolderOpen size={15} className="text-amber-500" />
+                  <FolderOpen size={15} className="semantic-warning-text" />
                 ) : (
-                  <Folder size={15} className="text-amber-500" />
+                  <Folder size={15} className="semantic-warning-text" />
                 )}
                 <span>Hồi 1: Tín Hiệu Từ Đáy Biển</span>
               </div>
 
               {expandedActs['act_01'] && (
-                <div className="ml-4 pl-2 border-l border-border/50 flex flex-col gap-0.5 mt-1">
+                <div className="ml-4 pl-2 border-l border-border flex flex-col gap-1 mt-1">
                   {chapters.map((ch) => {
                     const words = countVietnameseAndLatinWords(
                       ch.paragraphs.join(' ')
                     );
+                    const isCurrent = ch.id === activeChapterId;
                     return (
                       <div
                         key={ch.id}
@@ -140,15 +143,22 @@ export const Sidebar: React.FC = () => {
                             targetId: ch.id,
                           });
                         }}
-                        className="group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer hover:bg-elevated transition-colors"
+                        className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                          isCurrent
+                            ? 'bg-elevated font-semibold text-primary border border-border'
+                            : 'hover:bg-elevated/60 text-primary'
+                        }`}
                       >
                         <div className="flex items-center gap-1.5 truncate">
-                          <FileText size={14} className="text-muted shrink-0" />
-                          <span className="truncate text-xs text-primary font-medium">
-                            {ch.title}
-                          </span>
+                          <FileText
+                            size={14}
+                            className={`shrink-0 ${
+                              isCurrent ? 'text-accent' : 'text-muted'
+                            }`}
+                          />
+                          <span className="truncate text-xs">{ch.title}</span>
                         </div>
-                        <span className="text-[10px] text-muted ml-2 shrink-0">
+                        <span className="text-[11px] font-mono text-muted ml-2 shrink-0">
                           {words} từ
                         </span>
                       </div>
@@ -159,7 +169,10 @@ export const Sidebar: React.FC = () => {
             </div>
 
             {/* Quick Lorebook database link */}
-            <div className="pt-2 border-t mt-4" style={{ borderColor: 'var(--border-color)' }}>
+            <div
+              className="pt-2.5 border-t mt-4"
+              style={{ borderColor: 'var(--border-color)' }}
+            >
               <div
                 onClick={() =>
                   openTab({
@@ -169,7 +182,7 @@ export const Sidebar: React.FC = () => {
                     targetId: 'lore-all',
                   })
                 }
-                className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-elevated text-xs font-medium text-emerald-500"
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-elevated text-xs font-semibold semantic-success-text transition-colors"
               >
                 <Sparkles size={14} />
                 <span>Mở Toàn Bộ Lorebook (Wiki)</span>
@@ -182,8 +195,11 @@ export const Sidebar: React.FC = () => {
       {/* 2. LOREBOOK VIEW */}
       {activeActivity === 'lorebook' && (
         <div className="flex flex-col h-full">
-          <div className="p-3 border-b flex justify-between items-center" style={{ borderColor: 'var(--border-color)' }}>
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+          <div
+            className="p-3 border-b flex justify-between items-center"
+            style={{ borderColor: 'var(--border-color)' }}
+          >
+            <span className="text-xs font-bold uppercase tracking-wider text-muted">
               Thế Giới Quan (Lorebook)
             </span>
             <div className="flex items-center gap-1">
@@ -197,19 +213,19 @@ export const Sidebar: React.FC = () => {
                   })
                 }
                 title="Mở Sơ đồ quan hệ nhân vật (React Flow)"
-                className="px-1.5 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 rounded font-medium"
+                className="px-2 py-0.5 text-[11px] border semantic-success-box rounded-md font-semibold hover:opacity-90 transition-opacity"
               >
                 Graph
               </button>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto p-2.5">
             {/* Characters */}
             <div className="mb-3">
               <div
                 onClick={() => toggleLoreGroup('character')}
-                className="flex items-center justify-between px-2 py-1 rounded cursor-pointer hover:bg-elevated text-xs font-semibold text-primary"
+                className="flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer hover:bg-elevated text-xs font-bold text-primary"
               >
                 <div className="flex items-center gap-1.5">
                   {expandedLoreTypes['character'] ? (
@@ -217,13 +233,20 @@ export const Sidebar: React.FC = () => {
                   ) : (
                     <ChevronRight size={13} className="text-muted" />
                   )}
-                  <User size={14} className="text-emerald-500" />
-                  <span>Nhân vật ({entities.filter((e) => e.entity_type === 'character').length})</span>
+                  <User size={14} className="semantic-success-text" />
+                  <span>
+                    Nhân vật (
+                    {
+                      entities.filter((e) => e.entity_type === 'character')
+                        .length
+                    }
+                    )
+                  </span>
                 </div>
               </div>
 
               {expandedLoreTypes['character'] && (
-                <div className="ml-4 pl-2 border-l border-border/50 flex flex-col gap-0.5 mt-1">
+                <div className="ml-4 pl-2 border-l border-border flex flex-col gap-1 mt-1">
                   {entities
                     .filter((e) => e.entity_type === 'character')
                     .map((char) => (
@@ -237,18 +260,20 @@ export const Sidebar: React.FC = () => {
                             targetId: char.id,
                           })
                         }
-                        className="group flex items-center justify-between px-2 py-1 rounded cursor-pointer hover:bg-elevated text-xs text-primary"
+                        className="group flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer hover:bg-elevated text-xs text-primary font-medium"
                       >
-                        <div className="flex items-center gap-1.5 truncate">
+                        <div className="flex items-center gap-2 truncate">
                           <span
-                            className={`w-2 h-2 rounded-full ${
-                              char.status === 'dead' ? 'bg-red-500' : 'bg-emerald-500'
+                            className={`w-2 h-2 rounded-full shrink-0 ${
+                              char.status === 'dead'
+                                ? 'bg-red-500'
+                                : 'bg-emerald-500'
                             }`}
                           />
                           <span className="truncate">{char.title}</span>
                         </div>
                         {char.status === 'dead' && (
-                          <span className="text-[9px] text-red-400 bg-red-500/10 px-1 rounded">
+                          <span className="text-[10px] border semantic-error-box px-1.5 py-0.5 rounded font-semibold">
                             Tử vong
                           </span>
                         )}
@@ -262,7 +287,7 @@ export const Sidebar: React.FC = () => {
             <div className="mb-3">
               <div
                 onClick={() => toggleLoreGroup('location')}
-                className="flex items-center justify-between px-2 py-1 rounded cursor-pointer hover:bg-elevated text-xs font-semibold text-primary"
+                className="flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer hover:bg-elevated text-xs font-bold text-primary"
               >
                 <div className="flex items-center gap-1.5">
                   {expandedLoreTypes['location'] ? (
@@ -270,13 +295,17 @@ export const Sidebar: React.FC = () => {
                   ) : (
                     <ChevronRight size={13} className="text-muted" />
                   )}
-                  <MapPin size={14} className="text-blue-500" />
-                  <span>Địa danh ({entities.filter((e) => e.entity_type === 'location').length})</span>
+                  <MapPin size={14} className="semantic-info-text" />
+                  <span>
+                    Địa danh (
+                    {entities.filter((e) => e.entity_type === 'location').length}
+                    )
+                  </span>
                 </div>
               </div>
 
               {expandedLoreTypes['location'] && (
-                <div className="ml-4 pl-2 border-l border-border/50 flex flex-col gap-0.5 mt-1">
+                <div className="ml-4 pl-2 border-l border-border flex flex-col gap-1 mt-1">
                   {entities
                     .filter((e) => e.entity_type === 'location')
                     .map((loc) => (
@@ -290,9 +319,9 @@ export const Sidebar: React.FC = () => {
                             targetId: loc.id,
                           })
                         }
-                        className="flex items-center justify-between px-2 py-1 rounded cursor-pointer hover:bg-elevated text-xs text-primary"
+                        className="flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer hover:bg-elevated text-xs text-primary font-medium"
                       >
-                        <span className="truncate">{loc.title}</span>
+                        <span className="truncate">#{loc.title}</span>
                       </div>
                     ))}
                 </div>
@@ -303,7 +332,7 @@ export const Sidebar: React.FC = () => {
             <div className="mb-3">
               <div
                 onClick={() => toggleLoreGroup('item')}
-                className="flex items-center justify-between px-2 py-1 rounded cursor-pointer hover:bg-elevated text-xs font-semibold text-primary"
+                className="flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer hover:bg-elevated text-xs font-bold text-primary"
               >
                 <div className="flex items-center gap-1.5">
                   {expandedLoreTypes['item'] ? (
@@ -311,13 +340,16 @@ export const Sidebar: React.FC = () => {
                   ) : (
                     <ChevronRight size={13} className="text-muted" />
                   )}
-                  <Sparkles size={14} className="text-purple-500" />
-                  <span>Vật phẩm ({entities.filter((e) => e.entity_type === 'item').length})</span>
+                  <Sparkles size={14} className="semantic-warning-text" />
+                  <span>
+                    Vật phẩm (
+                    {entities.filter((e) => e.entity_type === 'item').length})
+                  </span>
                 </div>
               </div>
 
               {expandedLoreTypes['item'] && (
-                <div className="ml-4 pl-2 border-l border-border/50 flex flex-col gap-0.5 mt-1">
+                <div className="ml-4 pl-2 border-l border-border flex flex-col gap-1 mt-1">
                   {entities
                     .filter((e) => e.entity_type === 'item')
                     .map((item) => (
@@ -331,7 +363,7 @@ export const Sidebar: React.FC = () => {
                             targetId: item.id,
                           })
                         }
-                        className="flex items-center justify-between px-2 py-1 rounded cursor-pointer hover:bg-elevated text-xs text-primary"
+                        className="flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer hover:bg-elevated text-xs text-primary font-medium"
                       >
                         <span className="truncate">{item.title}</span>
                       </div>
@@ -346,8 +378,11 @@ export const Sidebar: React.FC = () => {
       {/* 3. SEARCH & FIND USAGES VIEW */}
       {activeActivity === 'search' && (
         <div className="flex flex-col h-full">
-          <div className="p-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+          <div
+            className="p-3 border-b"
+            style={{ borderColor: 'var(--border-color)' }}
+          >
+            <span className="text-xs font-bold uppercase tracking-wider text-muted">
               Tra Cứu Toàn Cục (Ctrl+Shift+F)
             </span>
             <div className="mt-2">
@@ -356,17 +391,17 @@ export const Sidebar: React.FC = () => {
                 placeholder="Tìm từ khóa hoặc tên nhân vật..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-2 py-1.5 bg-elevated rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                className="w-full px-2.5 py-1.5 bg-elevated rounded-lg border border-border text-xs text-primary placeholder:text-muted focus:outline-none focus:border-accent"
               />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto p-2.5">
             <div className="mb-3">
-              <span className="text-[11px] font-semibold text-muted uppercase">
+              <span className="text-[11px] font-bold text-muted uppercase">
                 Tra cứu xuất hiện nhanh:
               </span>
-              <div className="flex flex-wrap gap-1 mt-1">
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {entities.slice(0, 4).map((e) => (
                   <button
                     key={e.id}
@@ -374,7 +409,7 @@ export const Sidebar: React.FC = () => {
                       setSearchQuery(e.title);
                       openFindUsages(e.id);
                     }}
-                    className="px-2 py-0.5 bg-elevated hover:bg-elevated/80 rounded text-[11px] text-primary transition-colors"
+                    className="px-2 py-1 bg-elevated hover:opacity-90 border border-border rounded-md text-xs font-medium text-primary transition-colors"
                   >
                     {e.title}
                   </button>
@@ -384,7 +419,7 @@ export const Sidebar: React.FC = () => {
 
             {searchQuery && (
               <div className="flex flex-col gap-2">
-                <span className="text-[11px] font-medium text-muted">
+                <span className="text-xs font-semibold text-muted">
                   Kết quả cho &ldquo;{searchQuery}&rdquo;:
                 </span>
                 {chapters.map((ch) => {
@@ -398,9 +433,9 @@ export const Sidebar: React.FC = () => {
                   return (
                     <div
                       key={ch.id}
-                      className="p-2 bg-elevated/40 rounded border border-border/50 text-xs"
+                      className="p-2.5 bg-elevated/60 rounded-xl border border-border text-xs"
                     >
-                      <div className="font-semibold text-primary mb-1">
+                      <div className="font-bold text-primary mb-1">
                         {ch.title} ({matchingParas.length} lần)
                       </div>
                       {matchingParas.map((m) => (
@@ -416,7 +451,7 @@ export const Sidebar: React.FC = () => {
                               targetId: ch.id,
                             });
                           }}
-                          className="p-1 hover:bg-elevated rounded cursor-pointer text-muted hover:text-primary truncate"
+                          className="p-1.5 hover:bg-canvas rounded-lg cursor-pointer text-muted hover:text-primary truncate transition-colors"
                         >
                           Đoạn {m.idx + 1}: &ldquo;{m.p}&rdquo;
                         </div>
@@ -433,15 +468,18 @@ export const Sidebar: React.FC = () => {
       {/* 4. STORY TIMELINE & GIT SNAPSHOTS VIEW */}
       {activeActivity === 'git' && (
         <div className="flex flex-col h-full">
-          <div className="p-3 border-b flex flex-col gap-2" style={{ borderColor: 'var(--border-color)' }}>
+          <div
+            className="p-3 border-b flex flex-col gap-2"
+            style={{ borderColor: 'var(--border-color)' }}
+          >
             <div className="flex justify-between items-center">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted">
                 Dòng Thời Gian & Nhánh Cốt Truyện
               </span>
               <button
                 onClick={() => setShowNewBranchInput(!showNewBranchInput)}
                 title="Tạo nhánh cốt truyện thử nghiệm (What-If Timeline)"
-                className="p-1 hover:bg-elevated rounded text-muted hover:text-primary transition-colors"
+                className="p-1 hover:bg-elevated rounded-lg text-muted hover:text-primary transition-colors"
               >
                 <Plus size={15} />
               </button>
@@ -449,11 +487,11 @@ export const Sidebar: React.FC = () => {
 
             {/* Branch selector */}
             <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-muted">Nhánh:</span>
+              <span className="text-muted font-medium">Nhánh:</span>
               <select
                 value={activeBranch}
                 onChange={(e) => switchBranch(e.target.value)}
-                className="bg-elevated text-primary text-xs px-2 py-1 rounded border border-border focus:outline-none"
+                className="flex-1 bg-elevated text-primary font-medium text-xs px-2 py-1 rounded-lg border border-border focus:outline-none"
               >
                 {availableBranches.map((b) => (
                   <option key={b} value={b}>
@@ -470,7 +508,7 @@ export const Sidebar: React.FC = () => {
                   placeholder="what-if/linh-bo-tron..."
                   value={newBranchInput}
                   onChange={(e) => setNewBranchInput(e.target.value)}
-                  className="w-full px-2 py-1 text-xs bg-elevated rounded border border-border"
+                  className="w-full px-2 py-1 text-xs bg-elevated text-primary rounded-lg border border-border"
                 />
                 <button
                   onClick={() => {
@@ -480,7 +518,7 @@ export const Sidebar: React.FC = () => {
                       setShowNewBranchInput(false);
                     }
                   }}
-                  className="px-2 py-1 text-xs bg-emerald-600 text-white rounded font-medium"
+                  className="px-2.5 py-1 text-xs bg-emerald-600 text-white rounded-lg font-semibold"
                 >
                   Tạo
                 </button>
@@ -488,9 +526,9 @@ export const Sidebar: React.FC = () => {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto p-2.5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-semibold text-muted uppercase">
+              <span className="text-[11px] font-bold text-muted uppercase">
                 Điểm Nhớ (Git Snapshots):
               </span>
               <button
@@ -500,7 +538,7 @@ export const Sidebar: React.FC = () => {
                     createGitSnapshot(label.trim());
                   }
                 }}
-                className="text-[10px] text-accent hover:underline font-semibold"
+                className="text-xs semantic-success-text hover:underline font-bold"
               >
                 + Lưu mốc mới
               </button>
@@ -510,21 +548,24 @@ export const Sidebar: React.FC = () => {
               {snapshots.map((snap) => (
                 <div
                   key={snap.id}
-                  className="p-2.5 bg-elevated/40 hover:bg-elevated/70 border border-border/60 rounded-xl flex flex-col gap-1.5 transition-colors"
+                  className="p-2.5 bg-elevated/60 hover:bg-elevated border border-border rounded-xl flex flex-col gap-1.5 transition-colors"
                 >
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-                    <GitCommit size={14} className="text-emerald-500 shrink-0" />
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-primary">
+                    <GitCommit
+                      size={14}
+                      className="semantic-success-text shrink-0"
+                    />
                     <span className="truncate">{snap.label}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-muted">
+                  <div className="flex items-center justify-between text-[11px] text-muted">
                     <span className="flex items-center gap-1">
                       <Clock size={11} /> {snap.timestamp}
                     </span>
-                    <span className="text-emerald-400 font-mono">
+                    <span className="semantic-success-text font-mono font-bold">
                       +{snap.word_count_delta} từ
                     </span>
                   </div>
-                  <div className="pt-1 border-t border-border/40 flex justify-end">
+                  <div className="pt-1.5 border-t border-border/60 flex justify-end">
                     <button
                       onClick={() => {
                         if (
@@ -535,9 +576,9 @@ export const Sidebar: React.FC = () => {
                           restoreSnapshot(snap.id);
                         }
                       }}
-                      className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold transition-colors flex items-center gap-1"
+                      className="px-2.5 py-1 rounded-lg border semantic-success-box text-[11px] font-semibold transition-opacity hover:opacity-90 flex items-center gap-1"
                     >
-                      <RotateCcw size={10} /> Khôi phục mốc này
+                      <RotateCcw size={11} /> Khôi phục mốc này
                     </button>
                   </div>
                 </div>
@@ -547,29 +588,38 @@ export const Sidebar: React.FC = () => {
         </div>
       )}
 
-      {/* 5. CONTINUITY INSPECTOR VIEW */}
+      {/* 5. CONTINUITY INSPECTOR VIEW (Zero Low-Contrast Text Across All Themes) */}
       {activeActivity === 'inspector' && (
         <div className="flex flex-col h-full">
-          <div className="p-3 border-b flex justify-between items-center" style={{ borderColor: 'var(--border-color)' }}>
+          <div
+            className="p-3 border-b flex justify-between items-center"
+            style={{ borderColor: 'var(--border-color)' }}
+          >
             <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted">
                 Continuity Inspector
               </span>
-              <div className="text-[11px] text-muted">
-                {allIssues.filter((i) => i.severity === 'error').length} lỗi,{' '}
-                {allIssues.filter((i) => i.severity === 'warning').length} cảnh báo
+              <div className="text-xs font-medium text-muted mt-0.5">
+                <span className="semantic-error-text font-bold">
+                  {allIssues.filter((i) => i.severity === 'error').length} lỗi
+                </span>
+                ,{' '}
+                <span className="semantic-warning-text font-bold">
+                  {allIssues.filter((i) => i.severity === 'warning').length} cảnh
+                  báo
+                </span>
               </div>
             </div>
             <button
               onClick={() => openRefactorModal('char_hao_002')}
               title="Đổi tên toàn cục an toàn (Shift+F6)"
-              className="text-[10px] bg-elevated hover:bg-elevated/80 px-2 py-1 rounded text-primary border border-border font-medium"
+              className="text-xs bg-elevated hover:opacity-90 px-2.5 py-1 rounded-lg text-primary border border-border font-semibold"
             >
               Refactor
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
+          <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
             {allIssues.length === 0 ? (
               <div className="text-center py-8 text-xs text-muted">
                 Tuyệt vời! Không phát hiện mâu thuẫn cốt truyện nào.
@@ -578,29 +628,35 @@ export const Sidebar: React.FC = () => {
               allIssues.map((issue) => (
                 <div
                   key={issue.id}
-                  className={`p-2.5 rounded border text-xs flex flex-col gap-1.5 ${
+                  className={`p-3 rounded-xl border text-xs flex flex-col gap-2 ${
                     issue.severity === 'error'
-                      ? 'bg-red-500/10 border-red-500/30 text-red-200'
-                      : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                      ? 'semantic-error-box'
+                      : 'semantic-warning-box'
                   }`}
                 >
                   <div className="flex items-start gap-1.5">
                     {issue.severity === 'error' ? (
-                      <XCircle size={15} className="text-red-500 shrink-0 mt-0.5" />
+                      <XCircle
+                        size={15}
+                        className="semantic-error-text shrink-0 mt-0.5"
+                      />
                     ) : (
-                      <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+                      <AlertTriangle
+                        size={15}
+                        className="semantic-warning-text shrink-0 mt-0.5"
+                      />
                     )}
-                    <div className="font-semibold text-primary">
+                    <div className="font-bold text-primary">
                       {issue.chapter_title} (Đoạn {issue.paragraph_index + 1})
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-primary/90 leading-relaxed">
+                  <p className="text-xs text-primary font-medium leading-relaxed">
                     {issue.message}
                   </p>
 
-                  <div className="pt-1.5 border-t border-border/40 flex flex-col gap-1">
-                    <span className="text-[10px] font-semibold text-muted">
+                  <div className="pt-2 border-t border-border/60 flex flex-col gap-1">
+                    <span className="text-[11px] font-bold text-muted uppercase">
                       Quick Fix (Alt+Enter):
                     </span>
                     {issue.quick_fixes.map((qf) => (
@@ -609,13 +665,18 @@ export const Sidebar: React.FC = () => {
                         onClick={() => {
                           if (qf.action === 'ignore_rule') {
                             ignoreIssue(issue.id);
-                          } else if (qf.action === 'revive_entity' && issue.entity_id) {
-                            useWorkspaceStore.getState().updateEntity(issue.entity_id, {
-                              status: 'alive',
-                            });
+                          } else if (
+                            qf.action === 'revive_entity' &&
+                            issue.entity_id
+                          ) {
+                            useWorkspaceStore
+                              .getState()
+                              .updateEntity(issue.entity_id, {
+                                status: 'alive',
+                              });
                           }
                         }}
-                        className="text-left text-[11px] text-accent hover:underline"
+                        className="text-left text-xs font-semibold text-primary hover:underline bg-canvas/80 px-2 py-1 rounded border border-border/70"
                       >
                         {qf.label}
                       </button>

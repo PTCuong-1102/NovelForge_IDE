@@ -11,17 +11,18 @@ module.exports = {
         canvas: "var(--bg-canvas)",
         panel: "var(--bg-panel)",
         elevated: "var(--bg-elevated)",
+        paper: "var(--bg-paper)",
         border: "var(--border-color)",
         primary: "var(--text-primary)",
         muted: "var(--text-muted)",
         accent: "var(--accent-color)",
         entity: {
-          DEFAULT: "#10B981",
-          bg: "rgba(16, 185, 129, 0.12)",
+          DEFAULT: "var(--entity-pill-text)",
+          bg: "var(--entity-pill-bg)",
         },
         lore: {
-          DEFAULT: "#3B82F6",
-          bg: "rgba(59, 130, 246, 0.12)",
+          DEFAULT: "var(--lore-pill-text)",
+          bg: "var(--lore-pill-bg)",
         },
         continuity: {
           error: "#EF4444",
@@ -29,7 +30,7 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ["var(--font-sans)", "Inter", "Plus Jakarta Sans", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)", "Plus Jakarta Sans", "Inter", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)", "Literata", "Merriweather", "Charter", "Georgia", "serif"],
         mono: ["var(--font-mono)", "JetBrains Mono", "Fira Code", "monospace"],
       },

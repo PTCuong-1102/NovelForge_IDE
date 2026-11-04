@@ -26,6 +26,7 @@ export const StatusBar: React.FC = () => {
     toggleZenMode,
     chapters,
     entities,
+    setActiveActivity,
   } = useWorkspaceStore();
 
   const { activeChapterId, ignoredIssueIds, setPublishModalOpen } =
@@ -52,7 +53,7 @@ export const StatusBar: React.FC = () => {
 
   return (
     <footer
-      className="h-6 w-full flex items-center justify-between px-3 text-[11px] select-none border-t z-30"
+      className="h-7 w-full flex items-center justify-between px-3 text-xs select-none border-t z-30"
       style={{
         backgroundColor: 'var(--bg-panel)',
         borderColor: 'var(--border-color)',
@@ -61,52 +62,60 @@ export const StatusBar: React.FC = () => {
     >
       {/* Left items: Git Branch, Save Status, MCP Status */}
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1.5 text-primary hover:text-accent cursor-pointer">
-          <GitBranch size={13} className="text-emerald-500" />
+        <button
+          onClick={() => setActiveActivity('git')}
+          className="flex items-center gap-1.5 text-primary hover:text-accent font-medium cursor-pointer"
+          title="Nhánh cốt truyện hiện tại (Bấm để mở Story Timeline)"
+        >
+          <GitBranch size={13} className="semantic-success-text" />
           <span>{activeBranch}</span>
-        </div>
+        </button>
 
-        <div className="flex items-center gap-1 text-primary">
-          <FileCheck size={13} className="text-emerald-500" />
+        <div className="flex items-center gap-1 text-primary font-medium">
+          <FileCheck size={13} className="semantic-success-text" />
           <span>{saveStatus === 'saved' ? 'Đã lưu' : 'Đang lưu...'}</span>
         </div>
 
-        <div className="flex items-center gap-1 text-primary">
-          <Cpu size={13} className="text-purple-400" />
-          <span>MCP: 3 Agents Connected (Cline, Antigravity, OpenCode)</span>
+        <div className="hidden md:flex items-center gap-1.5 text-primary">
+          <Cpu size={13} className="semantic-info-text" />
+          <span>MCP: 3 Agents Connected</span>
         </div>
       </div>
 
       {/* Right items: Errors/Warnings, Word Count, Zen Mode, Publish */}
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
+        <button
+          onClick={() => setActiveActivity('inspector')}
+          className="flex items-center gap-2 hover:opacity-85 transition-opacity"
+          title="Bấm để mở Continuity Inspector"
+        >
           {errorCount > 0 && (
-            <span className="flex items-center gap-1 text-red-400 font-semibold">
+            <span className="flex items-center gap-1 semantic-error-text font-bold">
               <XCircle size={12} /> {errorCount} Lỗi
             </span>
           )}
           {warningCount > 0 && (
-            <span className="flex items-center gap-1 text-amber-400 font-semibold">
+            <span className="flex items-center gap-1 semantic-warning-text font-bold">
               <AlertTriangle size={12} /> {warningCount} Cảnh báo
             </span>
           )}
           {errorCount === 0 && warningCount === 0 && (
-            <span className="text-emerald-500 font-medium">
+            <span className="semantic-success-text font-semibold">
               ✓ Cốt truyện nhất quán
             </span>
           )}
-        </div>
+        </button>
 
-        <div className="text-primary font-medium">
+        <div className="text-primary font-semibold font-mono text-[11px]">
           <span>{currentWords.toLocaleString()} từ chương</span>
-          <span className="text-muted ml-1.5">
+          <span className="text-muted font-normal ml-1.5">
             / {totalWords.toLocaleString()} tổng
           </span>
         </div>
 
         <button
           onClick={() => setPublishModalOpen(true)}
-          className="flex items-center gap-1 text-primary hover:text-accent font-medium px-1.5 py-0.5 rounded hover:bg-elevated transition-colors"
+          className="flex items-center gap-1 text-primary hover:text-accent font-semibold px-2 py-0.5 rounded-md hover:bg-elevated transition-colors"
           title="Xuất bản sách điện tử (EPUB, DOCX, PDF)"
         >
           <UploadCloud size={13} />
@@ -115,7 +124,7 @@ export const StatusBar: React.FC = () => {
 
         <button
           onClick={toggleZenMode}
-          className="flex items-center gap-1 text-primary hover:text-accent font-medium px-1.5 py-0.5 rounded hover:bg-elevated transition-colors"
+          className="flex items-center gap-1 text-primary hover:text-accent font-semibold px-2 py-0.5 rounded-md hover:bg-elevated transition-colors"
           title="Bật/Tắt Zen Focus Mode (Ctrl+Shift+Z)"
         >
           {zenMode ? <Minimize2 size={13} /> : <Maximize2 size={13} />}

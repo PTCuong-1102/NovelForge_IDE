@@ -36,7 +36,8 @@ export const DockLayout: React.FC = () => {
   const activeSecondaryTab =
     secondaryTabs.find((t) => t.id === activeSecondaryTabId) ||
     secondaryTabs[0] ||
-    primaryTabs[1];
+    primaryTabs[1] ||
+    primaryTabs[0];
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -153,7 +154,13 @@ export const DockLayout: React.FC = () => {
         >
           <TabBar
             pane="secondary"
-            tabs={secondaryTabs.length > 0 ? secondaryTabs : [activeSecondaryTab]}
+            tabs={
+              secondaryTabs.length > 0
+                ? secondaryTabs
+                : activeSecondaryTab
+                ? [activeSecondaryTab]
+                : []
+            }
             activeTabId={activeSecondaryTab?.id || null}
             onSelectTab={(id) => setActiveTab(id, 'secondary')}
             onCloseTab={closeTab}

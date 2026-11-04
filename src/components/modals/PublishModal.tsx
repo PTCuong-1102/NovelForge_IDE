@@ -300,7 +300,7 @@ export const PublishModal: React.FC = () => {
           </div>
 
           {exportedFileName && (
-            <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+            <div className="p-2.5 rounded-lg border semantic-success-box text-xs flex items-center gap-2 font-medium">
               <CheckCircle size={14} />
               <span>
                 Đã tải tệp về máy thành công: <strong>{exportedFileName}</strong>

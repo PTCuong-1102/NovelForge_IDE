@@ -14,15 +14,7 @@ import {
   NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import {
-  Share2,
-  Clock,
-  ChevronRight,
-  User,
-  Shield,
-  Layers,
-  Sparkles,
-} from 'lucide-react';
+import { Share2, Clock, ChevronRight } from 'lucide-react';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { LoreEntity } from '@/lib/tauri-bridge';
 
@@ -35,28 +27,46 @@ interface CharacterNodeData extends Record<string, unknown> {
   onSelect: (id: string) => void;
 }
 
-const CharacterNode: React.FC<NodeProps<Node<CharacterNodeData>>> = ({ data }) => {
+const CharacterNode: React.FC<NodeProps<Node<CharacterNodeData>>> = ({
+  data,
+}) => {
   const { entity, isDead, role, faction, selected, onSelect } = data;
 
   return (
     <div
       onClick={() => onSelect(entity.id)}
-      className={`relative px-4 py-3 rounded-2xl shadow-xl border-2 transition-all cursor-pointer min-w-[170px] select-none ${
+      className={`relative px-4 py-3 rounded-2xl shadow-lg border-2 transition-all cursor-pointer min-w-[175px] select-none ${
         selected
           ? 'border-emerald-500 ring-2 ring-emerald-500/30 scale-105'
           : isDead
-          ? 'border-red-500/60 bg-red-950/20'
-          : 'border-border/80 hover:border-emerald-400'
+          ? 'border-red-500/70'
+          : 'border-border hover:border-emerald-500'
       }`}
       style={{
-        backgroundColor: 'var(--bg-elevated)',
+        backgroundColor: 'var(--bg-paper)',
         color: 'var(--text-primary)',
       }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-emerald-500 !w-2 !h-2" />
-      <Handle type="source" position={Position.Bottom} className="!bg-emerald-500 !w-2 !h-2" />
-      <Handle type="target" position={Position.Left} className="!bg-emerald-500 !w-2 !h-2" />
-      <Handle type="source" position={Position.Right} className="!bg-emerald-500 !w-2 !h-2" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!bg-emerald-500 !w-2 !h-2"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!bg-emerald-500 !w-2 !h-2"
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!bg-emerald-500 !w-2 !h-2"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!bg-emerald-500 !w-2 !h-2"
+      />
 
       <div className="flex items-center gap-2.5">
         <div
@@ -67,20 +77,22 @@ const CharacterNode: React.FC<NodeProps<Node<CharacterNodeData>>> = ({ data }) =
           {entity.title.slice(0, 2).toUpperCase()}
         </div>
         <div className="overflow-hidden">
-          <div className="font-bold text-xs truncate max-w-[100px] text-primary">
+          <div className="font-bold text-xs truncate max-w-[105px] text-primary">
             {entity.title}
           </div>
-          <div className="text-[10px] text-muted truncate max-w-[100px]">
+          <div className="text-[11px] text-muted truncate max-w-[105px]">
             {role || 'Nhân vật'}
           </div>
         </div>
       </div>
 
-      <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between text-[9px]">
-        <span className="text-muted truncate max-w-[85px]">{faction || 'Trung lập'}</span>
+      <div className="mt-2.5 pt-2 border-t border-border/60 flex items-center justify-between text-[10px]">
+        <span className="text-muted font-medium truncate max-w-[85px]">
+          {faction || 'Trung lập'}
+        </span>
         <span
-          className={`px-1.5 py-0.5 rounded font-semibold ${
-            isDead ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
+          className={`px-1.5 py-0.5 rounded border font-semibold ${
+            isDead ? 'semantic-error-box' : 'semantic-success-box'
           }`}
         >
           {isDead ? 'Tử vong' : 'Còn sống'}
@@ -97,7 +109,9 @@ const nodeTypes = {
 export const RelationshipGraph: React.FC = () => {
   const { entities, relations, openTab } = useWorkspaceStore();
   const [chapterFilter, setChapterFilter] = useState(8);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>('char_linh_001');
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
+    'char_linh_001'
+  );
 
   const characters = useMemo(
     () => entities.filter((e) => e.entity_type === 'character'),
@@ -145,7 +159,8 @@ export const RelationshipGraph: React.FC = () => {
     // Other characters around
     const radius = 250;
     otherChars.forEach((ch, idx) => {
-      const angle = (idx * (2 * Math.PI)) / Math.max(1, otherChars.length) - Math.PI / 2;
+      const angle =
+        (idx * (2 * Math.PI)) / Math.max(1, otherChars.length) - Math.PI / 2;
       const x = 380 + radius * Math.cos(angle);
       const y = 260 + radius * Math.sin(angle);
 
@@ -180,12 +195,12 @@ export const RelationshipGraph: React.FC = () => {
       const isMentor = rel.relation_type === 'mentor';
 
       const strokeColor = isBetrayal
-        ? '#F59E0B'
+        ? '#D97706'
         : isEnemy
-        ? '#EF4444'
+        ? '#DC2626'
         : isMentor
-        ? '#A855F7'
-        : '#10B981';
+        ? '#2563EB'
+        : '#059669';
 
       return {
         id: rel.id,
@@ -201,11 +216,11 @@ export const RelationshipGraph: React.FC = () => {
         labelStyle: {
           fill: 'var(--text-primary)',
           fontWeight: 600,
-          fontSize: 10,
+          fontSize: 11,
         },
         labelBgStyle: {
           fill: 'var(--bg-elevated)',
-          fillOpacity: 0.9,
+          fillOpacity: 0.95,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -231,11 +246,11 @@ export const RelationshipGraph: React.FC = () => {
         }}
       >
         <div className="flex items-center gap-2">
-          <Share2 size={16} className="text-emerald-500" />
+          <Share2 size={16} className="semantic-success-text" />
           <span className="font-bold text-primary">
             Sơ Đồ Mối Quan Hệ Nhân Vật (React Flow Graph)
           </span>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">
+          <span className="text-[11px] px-2 py-0.5 rounded-md border semantic-success-box font-semibold">
             @xyflow/react Engine
           </span>
         </div>
@@ -251,7 +266,7 @@ export const RelationshipGraph: React.FC = () => {
             max={20}
             value={chapterFilter}
             onChange={(e) => setChapterFilter(Number(e.target.value))}
-            className="w-36 accent-emerald-500 cursor-pointer"
+            className="w-36 accent-emerald-600 cursor-pointer"
           />
         </div>
       </div>
@@ -294,7 +309,7 @@ export const RelationshipGraph: React.FC = () => {
           >
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted">
                   Chi Tiết Thực Thể Đang Chọn
                 </span>
                 <button
@@ -306,7 +321,7 @@ export const RelationshipGraph: React.FC = () => {
                       targetId: selectedEntity.id,
                     })
                   }
-                  className="text-accent hover:underline flex items-center gap-1 font-semibold"
+                  className="text-accent hover:underline flex items-center gap-1 font-bold"
                 >
                   Mở hồ sơ <ChevronRight size={12} />
                 </button>
@@ -317,20 +332,22 @@ export const RelationshipGraph: React.FC = () => {
                   {selectedEntity.title}
                 </h2>
                 <span
-                  className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                  className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${
                     selectedEntity.status === 'dead'
-                      ? 'bg-red-500/15 text-red-400'
-                      : 'bg-emerald-500/15 text-emerald-400'
+                      ? 'semantic-error-box'
+                      : 'semantic-success-box'
                   }`}
                 >
-                  {selectedEntity.status === 'dead' ? 'Đã tử vong' : 'Còn sống'}
+                  {selectedEntity.status === 'dead'
+                    ? 'Đã tử vong'
+                    : 'Còn sống'}
                 </span>
               </div>
-              <div className="text-muted text-[11px] mt-0.5">
+              <div className="text-muted text-xs mt-0.5 font-medium">
                 {selectedEntity.role}
               </div>
 
-              <div className="space-y-2 mt-4 text-[11px] text-muted">
+              <div className="space-y-2 mt-4 text-xs text-muted">
                 <div>
                   <strong className="text-primary">Ngoại hình:</strong>{' '}
                   {selectedEntity.appearance}
@@ -347,7 +364,7 @@ export const RelationshipGraph: React.FC = () => {
 
               {/* Active Relations */}
               <div className="mt-5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted block mb-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-2">
                   Quan Hệ Tại Mốc Chương {chapterFilter}:
                 </span>
                 <div className="space-y-2">
@@ -367,20 +384,20 @@ export const RelationshipGraph: React.FC = () => {
                       return (
                         <div
                           key={rel.id}
-                          className="p-2 rounded-lg bg-elevated/60 border border-border flex items-center justify-between"
+                          className="p-2.5 rounded-xl bg-elevated border border-border flex items-center justify-between"
                         >
-                          <span className="font-semibold text-primary">
+                          <span className="font-bold text-primary">
                             {other?.title || 'Ẩn'}
                           </span>
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${
                               rel.relation_type === 'enemy'
-                                ? 'bg-red-500/15 text-red-400'
+                                ? 'semantic-error-box'
                                 : rel.relation_type === 'mentor'
-                                ? 'bg-purple-500/15 text-purple-400'
+                                ? 'semantic-info-box'
                                 : rel.relation_type === 'betrayal'
-                                ? 'bg-amber-500/15 text-amber-400'
-                                : 'bg-emerald-500/15 text-emerald-400'
+                                ? 'semantic-warning-box'
+                                : 'semantic-success-box'
                             }`}
                           >
                             {rel.label}
@@ -392,8 +409,9 @@ export const RelationshipGraph: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-elevated/40 border border-border/50 text-[10px] text-muted leading-relaxed">
-              Kéo thanh trượt thời gian để theo dõi diễn biến liên minh, đối đầu và sinh tử qua từng hồi truyện theo chuẩn React Flow.
+            <div className="p-3 rounded-xl bg-elevated border border-border text-[11px] text-muted leading-relaxed">
+              Kéo thanh trượt thời gian để theo dõi diễn biến liên minh, đối đầu
+              và sinh tử qua từng hồi truyện theo chuẩn React Flow.
             </div>
           </div>
         )}

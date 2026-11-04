@@ -42,7 +42,8 @@ export const LoreDatabaseView: React.FC = () => {
               Cơ Sở Dữ Liệu Thế Giới Quan (Lorebook)
             </h1>
             <p className="text-xs text-muted mt-0.5">
-              Quản lý toàn bộ nhân vật, địa danh, thần binh và dòng thời gian theo chuẩn Notion Database.
+              Quản lý toàn bộ nhân vật, địa danh, thần binh và dòng thời gian
+              theo chuẩn Notion Database.
             </p>
           </div>
 
@@ -53,7 +54,7 @@ export const LoreDatabaseView: React.FC = () => {
                 onClick={() => setViewMode('table')}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
                   viewMode === 'table'
-                    ? 'bg-canvas text-primary font-semibold shadow-sm'
+                    ? 'bg-paper text-primary font-semibold shadow-sm'
                     : 'text-muted hover:text-primary'
                 }`}
               >
@@ -64,7 +65,7 @@ export const LoreDatabaseView: React.FC = () => {
                 onClick={() => setViewMode('gallery')}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
                   viewMode === 'gallery'
-                    ? 'bg-canvas text-primary font-semibold shadow-sm'
+                    ? 'bg-paper text-primary font-semibold shadow-sm'
                     : 'text-muted hover:text-primary'
                 }`}
               >
@@ -96,7 +97,7 @@ export const LoreDatabaseView: React.FC = () => {
                   targetId: newId,
                 });
               }}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold flex items-center gap-1 transition-colors"
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold flex items-center gap-1 transition-colors shadow-sm"
             >
               <Plus size={14} />
               <span>Thêm thực thể</span>
@@ -111,9 +112,9 @@ export const LoreDatabaseView: React.FC = () => {
               <button
                 key={t}
                 onClick={() => setFilterType(t)}
-                className={`px-3 py-1 rounded-lg border font-medium transition-colors ${
+                className={`px-3 py-1 rounded-lg border font-semibold transition-colors ${
                   filterType === t
-                    ? 'bg-accent/15 border-accent text-accent'
+                    ? 'semantic-success-box'
                     : 'border-border bg-elevated text-muted hover:text-primary'
                 }`}
               >
@@ -138,7 +139,7 @@ export const LoreDatabaseView: React.FC = () => {
               placeholder="Lọc thực thể..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1 bg-elevated rounded-lg border border-border text-xs focus:outline-none"
+              className="pl-8 pr-3 py-1.5 bg-elevated rounded-lg border border-border text-xs text-primary placeholder:text-muted focus:outline-none focus:border-accent"
             />
           </div>
         </div>
@@ -148,22 +149,22 @@ export const LoreDatabaseView: React.FC = () => {
           <div
             className="rounded-2xl border overflow-hidden shadow-sm"
             style={{
-              backgroundColor: 'var(--bg-panel)',
+              backgroundColor: 'var(--bg-paper)',
               borderColor: 'var(--border-color)',
             }}
           >
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b bg-elevated/60 text-muted font-semibold uppercase tracking-wider text-[10px]">
-                  <th className="py-2.5 px-4">Tên thực thể</th>
-                  <th className="py-2.5 px-4">Phân loại</th>
-                  <th className="py-2.5 px-4">Trạng thái</th>
-                  <th className="py-2.5 px-4">Biệt danh / Aliases</th>
-                  <th className="py-2.5 px-4">Tổ chức / Phe phái</th>
-                  <th className="py-2.5 px-4 text-right">Hành động</th>
+                <tr className="border-b bg-elevated text-muted font-bold uppercase tracking-wider text-[11px]">
+                  <th className="py-3 px-4">Tên thực thể</th>
+                  <th className="py-3 px-4">Phân loại</th>
+                  <th className="py-3 px-4">Trạng thái</th>
+                  <th className="py-3 px-4">Biệt danh / Aliases</th>
+                  <th className="py-3 px-4">Tổ chức / Phe phái</th>
+                  <th className="py-3 px-4 text-right">Hành động</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/40">
+              <tbody className="divide-y divide-border/60">
                 {filtered.map((e) => (
                   <tr
                     key={e.id}
@@ -175,30 +176,32 @@ export const LoreDatabaseView: React.FC = () => {
                         targetId: e.id,
                       })
                     }
-                    className="hover:bg-elevated/40 cursor-pointer transition-colors"
+                    className="hover:bg-elevated/50 cursor-pointer transition-colors"
                   >
-                    <td className="py-3 px-4 font-semibold text-primary flex items-center gap-2">
+                    <td className="py-3 px-4 font-bold text-primary flex items-center gap-2">
                       {e.entity_type === 'character' ? (
-                        <User size={14} className="text-emerald-500" />
+                        <User size={14} className="semantic-success-text" />
                       ) : e.entity_type === 'location' ? (
-                        <MapPin size={14} className="text-blue-500" />
+                        <MapPin size={14} className="semantic-info-text" />
                       ) : (
-                        <Sparkles size={14} className="text-purple-500" />
+                        <Sparkles size={14} className="semantic-warning-text" />
                       )}
                       <span>{e.title}</span>
                     </td>
-                    <td className="py-3 px-4 text-muted capitalize">
+                    <td className="py-3 px-4 text-muted font-medium capitalize">
                       {e.entity_type}
                     </td>
                     <td className="py-3 px-4">
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold ${
                           e.status === 'dead'
-                            ? 'bg-red-500/15 text-red-400'
-                            : 'bg-emerald-500/15 text-emerald-400'
+                            ? 'semantic-error-box'
+                            : 'semantic-success-box'
                         }`}
                       >
-                        {e.status === 'dead' ? 'Tử vong' : 'Còn sống / Hoạt động'}
+                        {e.status === 'dead'
+                          ? 'Tử vong'
+                          : 'Còn sống / Hoạt động'}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-muted">
@@ -206,9 +209,11 @@ export const LoreDatabaseView: React.FC = () => {
                         ? e.aliases.join(', ')
                         : '—'}
                     </td>
-                    <td className="py-3 px-4 text-muted">{e.faction || '—'}</td>
+                    <td className="py-3 px-4 text-muted font-medium">
+                      {e.faction || '—'}
+                    </td>
                     <td className="py-3 px-4 text-right">
-                      <span className="text-accent hover:underline flex items-center justify-end gap-1 font-medium">
+                      <span className="text-accent hover:underline flex items-center justify-end gap-1 font-semibold">
                         Mở hồ sơ <ExternalLink size={12} />
                       </span>
                     </td>
@@ -231,7 +236,8 @@ export const LoreDatabaseView: React.FC = () => {
                     targetId: e.id,
                   })
                 }
-                className="p-4 rounded-xl border border-border bg-elevated/40 hover:bg-elevated cursor-pointer transition-all hover:shadow-md flex flex-col justify-between gap-3 text-xs"
+                className="p-4 rounded-2xl border border-border hover:border-accent cursor-pointer transition-all hover:shadow-md flex flex-col justify-between gap-3 text-xs"
+                style={{ backgroundColor: 'var(--bg-paper)' }}
               >
                 <div>
                   <div className="flex items-start justify-between">
@@ -239,24 +245,26 @@ export const LoreDatabaseView: React.FC = () => {
                       {e.title}
                     </h3>
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                      className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold ${
                         e.status === 'dead'
-                          ? 'bg-red-500/15 text-red-400'
-                          : 'bg-emerald-500/15 text-emerald-400'
+                          ? 'semantic-error-box'
+                          : 'semantic-success-box'
                       }`}
                     >
                       {e.status === 'dead' ? 'Tử vong' : 'Còn sống'}
                     </span>
                   </div>
 
-                  <p className="text-[11px] text-muted line-clamp-2 mt-2 leading-relaxed">
+                  <p className="text-xs text-muted line-clamp-2 mt-2 leading-relaxed">
                     {e.summary}
                   </p>
                 </div>
 
-                <div className="pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted">
-                  <span>{e.faction || 'Vùng tự do'}</span>
-                  <span className="text-accent font-medium flex items-center gap-1">
+                <div className="pt-2.5 border-t border-border/60 flex items-center justify-between text-xs text-muted">
+                  <span className="font-medium">
+                    {e.faction || 'Vùng tự do'}
+                  </span>
+                  <span className="text-accent font-semibold flex items-center gap-1">
                     Chi tiết <ExternalLink size={11} />
                   </span>
                 </div>

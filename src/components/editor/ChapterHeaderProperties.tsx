@@ -3,15 +3,11 @@
 import React, { useState } from 'react';
 import {
   Calendar,
-  Clock,
   Compass,
   User,
+  SlidersHorizontal,
+  Target,
   Sparkles,
-  ChevronDown,
-  CheckCircle,
-  HelpCircle,
-  AlertOctagon,
-  Wand2,
 } from 'lucide-react';
 import { ChapterDocument, LoreEntity } from '@/lib/tauri-bridge';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
@@ -27,8 +23,8 @@ export const ChapterHeaderProperties: React.FC<ChapterHeaderProps> = ({
   entities,
   wordCount,
 }) => {
-  const { updateChapterMetadata, openTab } = useWorkspaceStore();
-  const [collapsed, setCollapsed] = useState(false);
+  const { updateChapterMetadata } = useWorkspaceStore();
+  const [expanded, setExpanded] = useState(false);
 
   const characters = entities.filter((e) => e.entity_type === 'character');
   const locations = entities.filter((e) => e.entity_type === 'location');
@@ -39,60 +35,44 @@ export const ChapterHeaderProperties: React.FC<ChapterHeaderProps> = ({
   );
 
   return (
-    <div
-      className="mb-8 p-4 rounded-xl border select-none transition-all"
-      style={{
-        backgroundColor: 'var(--bg-panel)',
-        borderColor: 'var(--border-color)',
-      }}
-    >
-      {/* Title & Collapse Toggle */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs uppercase font-bold tracking-wider text-muted">
-            Thuộc tính chương (YAML Frontmatter)
-          </span>
-          <span
-            className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+    <div className="mb-6 select-none">
+      {/* Compact Notion-style Property Pills Strip */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-border/70">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {/* Status Pill */}
+          <button
+            onClick={() => {
+              const nextStatus =
+                chapter.status === 'draft'
+                  ? 'editing'
+                  : chapter.status === 'editing'
+                  ? 'completed'
+                  : 'draft';
+              updateChapterMetadata(chapter.id, { status: nextStatus });
+            }}
+            className={`px-2.5 py-1 rounded-full font-semibold border transition-colors flex items-center gap-1.5 ${
               chapter.status === 'completed'
-                ? 'bg-emerald-500/15 text-emerald-500'
+                ? 'semantic-success-box'
                 : chapter.status === 'editing'
-                ? 'bg-amber-500/15 text-amber-500'
-                : 'bg-blue-500/15 text-blue-500'
+                ? 'semantic-warning-box'
+                : 'semantic-info-box'
             }`}
+            title="Bấm để chuyển trạng thái chương (Bản nháp -> Đang biên tập -> Hoàn tất)"
           >
-            {chapter.status === 'completed'
-              ? 'Hoàn tất'
-              : chapter.status === 'editing'
-              ? 'Đang biên tập'
-              : 'Bản nháp'}
-          </span>
-          {chapter.is_flashback && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 font-semibold">
-              Hồi tưởng (Flashback)
+            <span className="w-1.5 h-1.5 rounded-full bg-current" />
+            <span>
+              {chapter.status === 'completed'
+                ? 'Hoàn tất'
+                : chapter.status === 'editing'
+                ? 'Đang biên tập'
+                : 'Bản nháp'}
             </span>
-          )}
-        </div>
+          </button>
 
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-1 hover:bg-elevated rounded text-muted hover:text-primary transition-colors text-xs flex items-center gap-1"
-        >
-          <span>{collapsed ? 'Mở rộng' : 'Thu gọn'}</span>
-          <ChevronDown
-            size={14}
-            className={`transition-transform ${collapsed ? '-rotate-90' : ''}`}
-          />
-        </button>
-      </div>
-
-      {!collapsed && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-          {/* POV Selector */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted flex items-center gap-1">
-              <User size={13} /> Góc nhìn (POV):
-            </span>
+          {/* POV Pill */}
+          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-elevated/80 border border-border text-primary">
+            <User size={12} className="text-accent shrink-0" />
+            <span className="text-muted">POV:</span>
             <select
               value={chapter.pov_character_id}
               onChange={(e) => {
@@ -102,37 +82,33 @@ export const ChapterHeaderProperties: React.FC<ChapterHeaderProps> = ({
                   pov_character_name: selected?.title || '',
                 });
               }}
-              className="bg-elevated border border-border rounded px-2 py-1.5 text-primary text-xs focus:outline-none"
+              className="bg-transparent font-semibold text-primary focus:outline-none cursor-pointer"
             >
               {characters.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.title} ({c.aliases[0] || 'Chính'})
+                  {c.title}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Story Date */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted flex items-center gap-1">
-              <Calendar size={13} /> Mốc thời gian:
-            </span>
+          {/* Story Date Pill */}
+          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-elevated/80 border border-border text-primary">
+            <Calendar size={12} className="text-accent shrink-0" />
             <input
               type="text"
               value={chapter.story_date}
               onChange={(e) =>
                 updateChapterMetadata(chapter.id, { story_date: e.target.value })
               }
-              className="bg-elevated border border-border rounded px-2 py-1.5 text-primary text-xs focus:outline-none"
-              placeholder="VD: 15/10/2026"
+              className="w-20 bg-transparent font-medium text-primary focus:outline-none"
+              title="Mốc thời gian cốt truyện"
             />
           </div>
 
-          {/* Primary Location Tag */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-muted flex items-center gap-1">
-              <Compass size={13} /> Địa điểm chính:
-            </span>
+          {/* Location Pill */}
+          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-elevated/80 border border-border text-primary">
+            <Compass size={12} className="semantic-info-text shrink-0" />
             <select
               value={chapter.location_id}
               onChange={(e) => {
@@ -142,30 +118,111 @@ export const ChapterHeaderProperties: React.FC<ChapterHeaderProps> = ({
                   location_tag: `#${loc?.title.replace(/\s+/g, '_') || ''}`,
                 });
               }}
-              className="bg-elevated border border-border rounded px-2 py-1.5 text-primary text-xs focus:outline-none"
+              className="bg-transparent font-medium text-primary focus:outline-none cursor-pointer"
             >
               {locations.map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.title}
+                  #{l.title}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Word Count Goal */}
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="font-medium text-muted">Tiến trình số từ:</span>
-              <span className="font-bold text-accent">
-                {wordCount} / {chapter.target_words} từ ({progressPercent}%)
+          {chapter.is_flashback && (
+            <span className="px-2.5 py-1 rounded-full border semantic-info-box font-semibold flex items-center gap-1">
+              <Sparkles size={11} />
+              <span>Hồi tưởng</span>
+            </span>
+          )}
+        </div>
+
+        {/* Word Target Progress & Expand YAML Drawer Button */}
+        <div className="flex items-center gap-2 text-xs">
+          <div
+            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-elevated/80 border border-border"
+            title={`Tiến trình: ${wordCount} / ${chapter.target_words} từ`}
+          >
+            <Target size={12} className="text-accent" />
+            <span className="font-semibold text-primary">
+              {wordCount.toLocaleString()}{' '}
+              <span className="text-muted font-normal">
+                / {chapter.target_words.toLocaleString()} từ
               </span>
-            </div>
-            <div className="w-full bg-elevated rounded-full h-2 overflow-hidden mt-1">
+            </span>
+            <div className="w-14 bg-canvas rounded-full h-1.5 overflow-hidden border border-border/60">
               <div
                 className="bg-accent h-full rounded-full transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
+          </div>
+
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className={`p-1.5 rounded-lg border transition-colors ${
+              expanded
+                ? 'bg-elevated border-accent text-primary'
+                : 'bg-elevated/60 border-border text-muted hover:text-primary'
+            }`}
+            title="Cấu hình chi tiết YAML Frontmatter của chương"
+          >
+            <SlidersHorizontal size={13} />
+          </button>
+        </div>
+      </div>
+
+      {/* Collapsible Full YAML Metadata Drawer */}
+      {expanded && (
+        <div
+          className="mt-3 p-3.5 rounded-xl border grid grid-cols-1 md:grid-cols-3 gap-3 text-xs animate-in fade-in duration-150"
+          style={{
+            backgroundColor: 'var(--bg-elevated)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-muted">
+              Mục tiêu số từ chương (target_words):
+            </label>
+            <input
+              type="number"
+              step={500}
+              value={chapter.target_words}
+              onChange={(e) =>
+                updateChapterMetadata(chapter.id, {
+                  target_words: Math.max(500, Number(e.target.value) || 3000),
+                })
+              }
+              className="bg-canvas border border-border rounded-lg px-2.5 py-1.5 text-primary font-mono focus:outline-none focus:border-accent"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-muted">
+              Đường dẫn tệp Markdown:
+            </label>
+            <input
+              type="text"
+              disabled
+              value={chapter.file_path}
+              className="bg-canvas/60 border border-border rounded-lg px-2.5 py-1.5 text-muted font-mono"
+            />
+          </div>
+
+          <div className="flex items-end pb-1">
+            <label className="flex items-center gap-2 cursor-pointer text-primary font-medium">
+              <input
+                type="checkbox"
+                checked={chapter.is_flashback}
+                onChange={(e) =>
+                  updateChapterMetadata(chapter.id, {
+                    is_flashback: e.target.checked,
+                  })
+                }
+                className="accent-emerald-600 rounded w-3.5 h-3.5"
+              />
+              <span>Đánh dấu toàn chương là Hồi tưởng (Flashback)</span>
+            </label>
           </div>
         </div>
       )}

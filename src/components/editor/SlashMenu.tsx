@@ -2,13 +2,11 @@
 
 import React from 'react';
 import {
-  FileText,
   User,
   MapPin,
   Sparkles,
   HelpCircle,
   Eye,
-  CornerDownLeft,
   Wand2,
 } from 'lucide-react';
 
@@ -31,11 +29,10 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
   onInsertLocation,
   onAiContinue,
   onAiShowDontTell,
-  onClose,
 }) => {
   return (
     <div
-      className="absolute z-50 w-72 rounded-xl shadow-2xl border p-1.5 select-none animate-in fade-in zoom-in-95 duration-100 text-xs"
+      className="w-76 rounded-xl shadow-2xl border p-2 select-none animate-in fade-in zoom-in-95 duration-100 text-xs"
       style={{
         backgroundColor: 'var(--bg-elevated)',
         borderColor: 'var(--border-color)',
@@ -48,23 +45,29 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
 
       <button
         onClick={onInsertSceneBreak}
-        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
       >
-        <span className="font-mono text-amber-500 font-bold">***</span>
+        <span className="font-mono semantic-warning-text font-bold">***</span>
         <div>
-          <div className="font-medium">Phân cảnh mới (Scene Break)</div>
-          <div className="text-[10px] text-muted">Chèn dấu ngắt cảnh ba sao</div>
+          <div className="font-semibold text-primary">
+            Phân cảnh mới (Scene Break)
+          </div>
+          <div className="text-[11px] text-muted">
+            Chèn dấu ngắt cảnh ba sao
+          </div>
         </div>
       </button>
 
       <button
         onClick={onInsertFlashback}
-        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
       >
-        <Eye size={14} className="text-purple-400" />
+        <Eye size={14} className="semantic-info-text shrink-0" />
         <div>
-          <div className="font-medium">Đoạn Hồi tưởng [Flashback Block]</div>
-          <div className="text-[10px] text-muted">
+          <div className="font-semibold text-primary">
+            Đoạn Hồi tưởng [Flashback Block]
+          </div>
+          <div className="text-[11px] text-muted">
             Miễn trừ kiểm tra nhân vật đã chết
           </div>
         </div>
@@ -72,55 +75,61 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
 
       <button
         onClick={onInsertAuthorNote}
-        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
       >
-        <HelpCircle size={14} className="text-blue-400" />
+        <HelpCircle size={14} className="semantic-info-text shrink-0" />
         <div>
-          <div className="font-medium">Ghi chú tác giả (Author Note)</div>
-          <div className="text-[10px] text-muted">
+          <div className="font-semibold text-primary">
+            Ghi chú tác giả (Author Note)
+          </div>
+          <div className="text-[11px] text-muted">
             Khối callout ẩn khi xuất bản
           </div>
         </div>
       </button>
 
-      <div className="px-2 py-1 mt-1 text-[10px] font-bold uppercase tracking-wider text-muted border-t border-border/40">
+      <div className="px-2 py-1 mt-1.5 text-[10px] font-bold uppercase tracking-wider text-muted border-t border-border/60">
         Liên kết Thế giới quan
       </div>
 
       <button
         onClick={onInsertCharacter}
-        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
       >
-        <User size={14} className="text-emerald-500" />
+        <User size={14} className="semantic-success-text shrink-0" />
         <div>
-          <div className="font-medium">Chèn Nhân vật (@)</div>
-          <div className="text-[10px] text-muted">Gợi ý từ Lorebook SQLite</div>
+          <div className="font-semibold text-primary">Chèn Nhân vật (@)</div>
+          <div className="text-[11px] text-muted">
+            Gợi ý từ Lorebook SQLite
+          </div>
         </div>
       </button>
 
       <button
         onClick={onInsertLocation}
-        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors"
       >
-        <MapPin size={14} className="text-blue-500" />
+        <MapPin size={14} className="semantic-info-text shrink-0" />
         <div>
-          <div className="font-medium">Chèn Địa danh (#)</div>
-          <div className="text-[10px] text-muted">Liên kết bản đồ & bối cảnh</div>
+          <div className="font-semibold text-primary">Chèn Địa danh (#)</div>
+          <div className="text-[11px] text-muted">
+            Liên kết bản đồ & bối cảnh
+          </div>
         </div>
       </button>
 
-      <div className="px-2 py-1 mt-1 text-[10px] font-bold uppercase tracking-wider text-muted border-t border-border/40">
+      <div className="px-2 py-1 mt-1.5 text-[10px] font-bold uppercase tracking-wider text-muted border-t border-border/60">
         Trợ lý AI Tại chỗ (Composer)
       </div>
 
       <button
         onClick={onAiContinue}
-        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors text-accent font-medium"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors semantic-success-text font-semibold"
       >
-        <Sparkles size={14} />
+        <Sparkles size={14} className="shrink-0" />
         <div>
           <div>Viết tiếp cảnh này</div>
-          <div className="text-[10px] text-muted">
+          <div className="text-[11px] text-muted font-normal">
             Duy trì ngữ cảnh nhân vật & bối cảnh
           </div>
         </div>
@@ -128,12 +137,12 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
 
       <button
         onClick={onAiShowDontTell}
-        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors text-purple-400 font-medium"
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-canvas text-left transition-colors semantic-info-text font-semibold"
       >
-        <Wand2 size={14} />
+        <Wand2 size={14} className="shrink-0" />
         <div>
           <div>Miêu tả ngũ quan (Show, Don&apos;t Tell)</div>
-          <div className="text-[10px] text-muted">
+          <div className="text-[11px] text-muted font-normal">
             Tăng chi tiết thính giác, thị giác, xúc giác
           </div>
         </div>

@@ -14,6 +14,7 @@ interface EditorStoreState extends ActiveModalState {
   focusedParagraphIndex: number;
   typewriterScrolling: boolean;
   paragraphFocus: boolean;
+  firstLineIndent: boolean;
   proseFont: 'serif' | 'sans' | 'mono';
   proseFontSize: number;
   ignoredIssueIds: string[];
@@ -27,6 +28,7 @@ interface EditorStoreState extends ActiveModalState {
   setFocusedParagraphIndex: (idx: number) => void;
   toggleTypewriterScrolling: () => void;
   toggleParagraphFocus: () => void;
+  toggleFirstLineIndent: () => void;
   setProseFont: (font: 'serif' | 'sans' | 'mono') => void;
   setProseFontSize: (size: number) => void;
   ignoreIssue: (issueId: string) => void;
@@ -45,7 +47,8 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   activeChapterId: 'ch_08',
   focusedParagraphIndex: 1,
   typewriterScrolling: true,
-  paragraphFocus: true,
+  paragraphFocus: false,
+  firstLineIndent: true,
   proseFont: 'serif',
   proseFontSize: 18,
   ignoredIssueIds: [],
@@ -67,6 +70,8 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
     set((s) => ({ typewriterScrolling: !s.typewriterScrolling })),
   toggleParagraphFocus: () =>
     set((s) => ({ paragraphFocus: !s.paragraphFocus })),
+  toggleFirstLineIndent: () =>
+    set((s) => ({ firstLineIndent: !s.firstLineIndent })),
   setProseFont: (font) => set({ proseFont: font }),
   setProseFontSize: (size) => set({ proseFontSize: size }),
   ignoreIssue: (issueId) =>

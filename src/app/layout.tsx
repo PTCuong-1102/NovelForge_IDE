@@ -14,7 +14,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi" data-theme="obsidian">
-      <body className="antialiased">{children}</body>
+      <head>
+        {/* Progressive Vietnamese Typography (Literata, Plus Jakarta Sans, JetBrains Mono) - Works online & degrades gracefully offline */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="antialiased font-sans">{children}</body>
     </html>
   );
 }
