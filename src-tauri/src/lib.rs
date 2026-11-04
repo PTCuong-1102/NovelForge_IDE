@@ -9,6 +9,8 @@ use commands::{ai_cmd, fs_cmd, linter_cmd, lore_cmd};
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            fs_cmd::init_project_workspace,
+            fs_cmd::sync_project_sqlite,
             fs_cmd::read_project_tree,
             fs_cmd::read_markdown_file,
             fs_cmd::write_markdown_file,

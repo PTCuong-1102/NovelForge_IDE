@@ -1,7 +1,11 @@
 use crate::ai_bridge::mcp_server::{list_novelforge_mcp_tools, McpToolCallResult, McpToolSpec};
-use crate::ai_bridge::rag_engine::RagSearchResult;
+use crate::ai_bridge::rag_engine::{
+    hybrid_search_lore_sqlite, upsert_rag_chunk, RagSearchResult,
+};
+use crate::core_engine::indexer::init_sqlite_db;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InlineDiffProposal {
@@ -56,15 +60,59 @@ pub async fn propose_inline_diff(
 
 #[tauri::command]
 pub async fn search_lore_rag(
+    project_root: Option<String>,
     query: String,
-    _entity_type: Option<String>,
+    entity_type: Option<String>,
 ) -> Result<Vec<RagSearchResult>, String> {
-    Ok(vec![RagSearchResult {
-        chunk_id: "chunk_linh_01".to_string(),
-        entity_id: "char_linh_001".to_string(),
-        title: "Lâm Vũ Linh".to_string(),
-        entity_type: "character".to_string(),
-        snippet: format!("Kết quả Hybrid Search (BM25 + sqlite-vec) cho truy vấn: {}", query),
-        score: 0.94,
-    }])
+    if let Some(root) = project_root {
+        let db_path = Path::new(&root).join(".novelforge").join("index.sqlite");
+        if let Ok(conn) = init_sqlite_db(&db_path) {
+            if let Ok(results) =
+                hybrid_search_lore_sqlite(&conn, &query, entity_type.as_deref(), 8)
+            {
+                if !results.is_empty() {
+                    return Ok(results);
+                }
+            }
+        }
+    }
+
+    // Fallback in-memory SQLite + sqlite-vec hybrid evaluation when no project_root is open on disk
+    let mem_conn = rusqlite::Connection::open_in_memory().map_err(|e| e.to_string())?;
+    mem_conn
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS lore_embeddings_store (
+                chunk_id TEXT PRIMARY KEY,
+                entity_id TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                entity_type TEXT NOT NULL DEFAULT 'character',
+                chunk_text TEXT NOT NULL,
+                embedding_blob BLOB NOT NULL,
+                embedding_dim INTEGER NOT NULL DEFAULT 768,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let _ = upsert_rag_chunk(
+        &mem_conn,
+        "chunk_linh_01",
+        "char_linh_001",
+        "Lâm Vũ Linh",
+        "character",
+        "Đặc vụ số 7 của Cục An ninh Mạng, mái tóc ngắn ngang vai, cổ tay gắn bộ giải mã cơ khí sinh học.",
+        None,
+    );
+    let _ = upsert_rag_chunk(
+        &mem_conn,
+        "chunk_port_01",
+        "loc_east_port",
+        "Bến Cảng Đông",
+        "location",
+        "Khu cảng công nghiệp bỏ hoang ngập trong mưa axit, nơi cất giấu Ổ Khóa Lượng Tử Thần Nông.",
+        None,
+    );
+
+    hybrid_search_lore_sqlite(&mem_conn, &query, entity_type.as_deref(), 5)
+        .map_err(|e| e.to_string())
 }

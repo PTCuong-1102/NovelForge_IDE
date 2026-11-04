@@ -1,6 +1,10 @@
 'use client';
 
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import Typography from '@tiptap/extension-typography';
 import {
   Sparkles,
   Check,
@@ -17,22 +21,37 @@ import {
   Indent,
   Pilcrow,
   Wand2,
-  Eye,
+  FileCode2,
+  BookOpen,
+  RefreshCw,
 } from 'lucide-react';
-import { ChapterDocument, LoreEntity } from '@/lib/tauri-bridge';
+import {
+  ChapterDocument,
+  ContinuityIssue,
+  LoreEntity,
+  countVietnameseAndLatinWords,
+  runContinuityLinterEngine,
+} from '@/lib/tauri-bridge';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { useAgentStore } from '@/stores/useAgentStore';
 import { ChapterHeaderProperties } from './ChapterHeaderProperties';
 import { SlashMenu } from './SlashMenu';
 import {
-  countVietnameseAndLatinWords,
-  runContinuityLinterEngine,
-} from '@/lib/tauri-bridge';
+  AiGhostTextExtension,
+  EntityAndLinterExtension,
+  buildContextualGhostSuggestion,
+  paragraphsToTipTapDoc,
+  parseLosslessMarkdownToChapter,
+  serializeChapterToLosslessMarkdown,
+  tipTapDocToParagraphs,
+} from './extensions';
 
 interface NovelEditorProps {
   chapter: ChapterDocument;
 }
+
+type EditorCanvasMode = 'blocks' | 'tiptap' | 'markdown';
 
 export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   const { entities, updateChapterParagraphs, updateChapterMetadata, openTab } =
@@ -60,10 +79,21 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   const { diffProposals, resolveDiffProposal, sendComposerPrompt } =
     useAgentStore();
 
+  const [canvasMode, setCanvasMode] = useState<EditorCanvasMode>('blocks');
   const [editingParagraphIndex, setEditingParagraphIndex] = useState<
     number | null
   >(null);
   const [editingChapterTitle, setEditingChapterTitle] = useState(false);
+
+  // Ghost Text AI state
+  const [ghostAiEnabled, setGhostAiEnabled] = useState(true);
+  const [ghostVariantIndex, setGhostVariantIndex] = useState(0);
+  const [ghostDismissedForText, setGhostDismissedForText] = useState<
+    string | null
+  >(null);
+
+  // Lossless Raw Markdown buffer when in 'markdown' mode
+  const [rawMarkdownDraft, setRawMarkdownDraft] = useState('');
 
   const [hoveredEntity, setHoveredEntity] = useState<LoreEntity | null>(null);
   const [hoverCardPos, setHoverCardPos] = useState<{
@@ -71,7 +101,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     y: number;
   } | null>(null);
   const [activeIssuePopover, setActiveIssuePopover] = useState<{
-    issue: ReturnType<typeof runContinuityLinterEngine>[0];
+    issue: ContinuityIssue;
     x: number;
     y: number;
   } | null>(null);
@@ -96,6 +126,145 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     [diffProposals, chapter.id]
   );
 
+  // Compute active AI Ghost Text suggestion for the focused paragraph
+  const activeParaIdx =
+    editingParagraphIndex ??
+    Math.min(
+      focusedParagraphIndex,
+      Math.max(0, chapter.paragraphs.length - 1)
+    );
+  const activeParaText = chapter.paragraphs[activeParaIdx] || '';
+
+  const currentGhostSuggestion = useMemo(() => {
+    if (!ghostAiEnabled) return '';
+    if (ghostDismissedForText === activeParaText) return '';
+    return buildContextualGhostSuggestion(
+      activeParaText,
+      chapter,
+      entities,
+      ghostVariantIndex
+    );
+  }, [
+    ghostAiEnabled,
+    ghostDismissedForText,
+    activeParaText,
+    chapter,
+    entities,
+    ghostVariantIndex,
+  ]);
+
+  // Mutable refs for ProseMirror extensions to read latest state without re-mounting editor
+  const entitiesRef = useRef(entities);
+  entitiesRef.current = entities;
+
+  const issuesRef = useRef(issues);
+  issuesRef.current = issues;
+
+  const ghostEnabledRef = useRef(ghostAiEnabled);
+  ghostEnabledRef.current = ghostAiEnabled;
+
+  const chapterRef = useRef(chapter);
+  chapterRef.current = chapter;
+
+  const ghostVariantRef = useRef(ghostVariantIndex);
+  ghostVariantRef.current = ghostVariantIndex;
+
+  const handleOpenEntityCard = useCallback(
+    (ent: LoreEntity, clientX: number, clientY: number) => {
+      setHoveredEntity(ent);
+      setHoverCardPos({
+        x: Math.min(clientX, window.innerWidth - 340),
+        y: clientY + 14,
+      });
+    },
+    []
+  );
+
+  const handleOpenIssueCard = useCallback(
+    (issue: ContinuityIssue, clientX: number, clientY: number) => {
+      setActiveIssuePopover({
+        issue,
+        x: Math.min(clientX, window.innerWidth - 360),
+        y: clientY + 14,
+      });
+    },
+    []
+  );
+
+  // TipTap / ProseMirror Engine instance with Lossless Markdown + Entity Highlighting + Ghost Text
+  const tiptapEditor = useEditor({
+    immediatelyRender: false,
+    extensions: [
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] },
+      }),
+      Typography,
+      Placeholder.configure({
+        placeholder:
+          'Bắt đầu viết chương truyện... (Nhấn Tab để chấp nhận Ghost Text AI, / để mở menu lệnh)',
+      }),
+      EntityAndLinterExtension.configure({
+        getEntities: () => entitiesRef.current,
+        getIssues: () => issuesRef.current,
+        onEntityClick: (entity, event) => {
+          handleOpenEntityCard(entity, event.clientX, event.clientY);
+        },
+        onIssueClick: (issue, event) => {
+          handleOpenIssueCard(issue, event.clientX, event.clientY);
+        },
+      }),
+      AiGhostTextExtension.configure({
+        isEnabled: () => ghostEnabledRef.current,
+        getSuggestion: (paraText) =>
+          buildContextualGhostSuggestion(
+            paraText,
+            chapterRef.current,
+            entitiesRef.current,
+            ghostVariantRef.current
+          ),
+        onCycleSuggestion: () => {
+          setGhostVariantIndex((prev) => prev + 1);
+        },
+        onDismissSuggestion: () => {
+          setGhostDismissedForText(activeParaText);
+        },
+      }),
+    ],
+    content: paragraphsToTipTapDoc(chapter.paragraphs),
+    onUpdate: ({ editor }) => {
+      const serializedParagraphs = tipTapDocToParagraphs(editor.getJSON());
+      if (serializedParagraphs.length > 0) {
+        updateChapterParagraphs(chapterRef.current.id, serializedParagraphs);
+      }
+    },
+  });
+
+  // Synchronize external chapter changes into TipTap & Markdown views
+  useEffect(() => {
+    if (tiptapEditor && !tiptapEditor.isFocused) {
+      const currentFromEditor = tipTapDocToParagraphs(tiptapEditor.getJSON());
+      if (
+        JSON.stringify(currentFromEditor) !==
+        JSON.stringify(chapter.paragraphs)
+      ) {
+        tiptapEditor.commands.setContent(
+          paragraphsToTipTapDoc(chapter.paragraphs),
+          false
+        );
+      }
+    }
+    if (canvasMode === 'markdown') {
+      setRawMarkdownDraft(serializeChapterToLosslessMarkdown(chapter));
+    }
+  }, [chapter.id, chapter.paragraphs, tiptapEditor, canvasMode]);
+
+  // Force ProseMirror decoration refresh when Lorebook entities, Linter issues, or Ghost Text change
+  useEffect(() => {
+    if (tiptapEditor && !tiptapEditor.isDestroyed) {
+      tiptapEditor.view.dispatch(tiptapEditor.state.tr);
+    }
+  }, [tiptapEditor, entities, issues, ghostAiEnabled, ghostVariantIndex]);
+
   // Auto-focus and auto-resize textarea when entering in-place editing
   useEffect(() => {
     if (editingParagraphIndex !== null && activeTextareaRef.current) {
@@ -110,10 +279,19 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     const updated = [...chapter.paragraphs];
     updated[pIdx] = newText;
     updateChapterParagraphs(chapter.id, updated);
+    setGhostDismissedForText(null);
     if (activeTextareaRef.current) {
       activeTextareaRef.current.style.height = 'auto';
       activeTextareaRef.current.style.height = `${activeTextareaRef.current.scrollHeight}px`;
     }
+  };
+
+  const handleAcceptGhostText = (pIdx: number) => {
+    if (!currentGhostSuggestion) return;
+    const updated = [...chapter.paragraphs];
+    updated[pIdx] = `${(updated[pIdx] || '').trimEnd()}${currentGhostSuggestion}`;
+    updateChapterParagraphs(chapter.id, updated);
+    setGhostVariantIndex((v) => v + 1);
   };
 
   const handleKeyDown = (
@@ -122,6 +300,21 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   ) => {
     if (e.key === '/') {
       setSlashMenu(true, pIdx);
+      return;
+    }
+
+    // Tab accepts AI Ghost Text suggestion when cursor is at the end of the paragraph
+    if (e.key === 'Tab' && ghostAiEnabled && currentGhostSuggestion) {
+      e.preventDefault();
+      handleAcceptGhostText(pIdx);
+      return;
+    }
+
+    // Alt+\ cycles AI Ghost Text suggestion
+    if (e.altKey && e.key === '\\') {
+      e.preventDefault();
+      setGhostDismissedForText(null);
+      setGhostVariantIndex((v) => v + 1);
       return;
     }
 
@@ -143,11 +336,41 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     }
   };
 
+  // Handle lossless raw Markdown edits
+  const handleRawMarkdownChange = (nextRaw: string) => {
+    setRawMarkdownDraft(nextRaw);
+    const parsed = parseLosslessMarkdownToChapter(nextRaw);
+    if (parsed.paragraphs.length > 0) {
+      updateChapterParagraphs(chapter.id, parsed.paragraphs);
+    }
+    const fm = parsed.frontmatter;
+    const metadataPatch: Partial<ChapterDocument> = {};
+    if (typeof fm.title === 'string' && fm.title.trim()) {
+      metadataPatch.title = fm.title.trim();
+    }
+    if (
+      fm.status === 'draft' ||
+      fm.status === 'editing' ||
+      fm.status === 'completed'
+    ) {
+      metadataPatch.status = fm.status;
+    }
+    if (typeof fm.story_date === 'string') {
+      metadataPatch.story_date = fm.story_date;
+    }
+    if (typeof fm.location_tag === 'string') {
+      metadataPatch.location_tag = fm.location_tag;
+    }
+    if (typeof fm.is_flashback === 'boolean') {
+      metadataPatch.is_flashback = fm.is_flashback;
+    }
+    if (Object.keys(metadataPatch).length > 0) {
+      updateChapterMetadata(chapter.id, metadataPatch);
+    }
+  };
+
   // Quick fix resolution
-  const handleApplyQuickFix = (
-    issue: ReturnType<typeof runContinuityLinterEngine>[0],
-    action: string
-  ) => {
+  const handleApplyQuickFix = (issue: ContinuityIssue, action: string) => {
     if (action === 'mark_flashback') {
       const updated = [...chapter.paragraphs];
       updated[issue.paragraph_index] = `[Hồi tưởng] ${updated[issue.paragraph_index]}`;
@@ -205,8 +428,51 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
           borderColor: 'var(--border-color)',
         }}
       >
-        {/* Left: Quick Literary Block Actions */}
-        <div className="flex items-center gap-1.5">
+        {/* Left: Engine Mode Switcher & Literary Actions */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Canvas Engine Mode Selector */}
+          <div className="flex items-center bg-canvas p-0.5 rounded-lg border border-border">
+            <button
+              onClick={() => setCanvasMode('blocks')}
+              className={`px-2 py-1 rounded-md font-semibold flex items-center gap-1 transition-colors ${
+                canvasMode === 'blocks'
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-muted hover:text-primary'
+              }`}
+              title="Chế độ Trang giấy Đoạn văn Liền mạch (In-Place Literary Blocks)"
+            >
+              <BookOpen size={12} />
+              <span>Trang giấy</span>
+            </button>
+            <button
+              onClick={() => setCanvasMode('tiptap')}
+              className={`px-2 py-1 rounded-md font-semibold flex items-center gap-1 transition-colors ${
+                canvasMode === 'tiptap'
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-muted hover:text-primary'
+              }`}
+              title="Chế độ Nhân ProseMirror / TipTap Liên tục"
+            >
+              <Sparkles size={12} />
+              <span>TipTap Engine</span>
+            </button>
+            <button
+              onClick={() => {
+                setRawMarkdownDraft(serializeChapterToLosslessMarkdown(chapter));
+                setCanvasMode('markdown');
+              }}
+              className={`px-2 py-1 rounded-md font-semibold flex items-center gap-1 transition-colors ${
+                canvasMode === 'markdown'
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-muted hover:text-primary'
+              }`}
+              title="Kiểm tra & Chỉnh sửa Markdown + YAML Frontmatter hai chiều không mất cấu trúc (Lossless .md)"
+            >
+              <FileCode2 size={12} />
+              <span>Lossless .md</span>
+            </button>
+          </div>
+
           <button
             onClick={() =>
               setSlashMenu(
@@ -218,25 +484,25 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
             title="Mở menu lệnh nhanh (Gõ / trong đoạn văn)"
           >
             <Wand2 size={13} className="text-accent" />
-            <span>Chèn / Lệnh AI (/)</span>
+            <span>Lệnh (/)</span>
           </button>
 
           <button
-            onClick={() => {
-              const targetIdx = editingParagraphIndex ?? focusedParagraphIndex;
-              const updated = [...chapter.paragraphs];
-              updated.splice(targetIdx + 1, 0, '***');
-              updateChapterParagraphs(chapter.id, updated);
-            }}
-            className="px-2 py-1 rounded-lg hover:bg-elevated text-muted hover:text-primary font-mono font-bold transition-colors"
-            title="Chèn ngắt phân cảnh (***)"
+            onClick={() => setGhostAiEnabled((v) => !v)}
+            className={`px-2.5 py-1 rounded-lg border flex items-center gap-1 font-semibold transition-colors ${
+              ghostAiEnabled
+                ? 'semantic-info-box'
+                : 'bg-elevated border-border text-muted hover:text-primary'
+            }`}
+            title="Bật/Tắt gợi ý hoàn thiện câu AI Ghost Text (Nhấn Tab để nhận)"
           >
-            ***
+            <Sparkles size={12} />
+            <span>Ghost AI</span>
           </button>
 
           <button
             onClick={toggleFirstLineIndent}
-            className={`px-2.5 py-1 rounded-lg border flex items-center gap-1 font-medium transition-colors ${
+            className={`px-2 py-1 rounded-lg border flex items-center gap-1 font-medium transition-colors ${
               firstLineIndent
                 ? 'semantic-success-box'
                 : 'bg-elevated border-border text-muted hover:text-primary'
@@ -244,7 +510,6 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
             title="Bật/Tắt thụt đầu dòng văn học (First-line Indent)"
           >
             <Indent size={13} />
-            <span className="hidden sm:inline">Thụt đầu dòng</span>
           </button>
         </div>
 
@@ -348,193 +613,304 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
           )}
         </div>
 
-        {/* Seamless In-Place Prose Paragraphs */}
-        <div className="flex flex-col gap-5 prose-editor-area">
-          {chapter.paragraphs.map((para, pIdx) => {
-            const isFocused =
-              focusedParagraphIndex === pIdx || editingParagraphIndex === pIdx;
-            const isEditing = editingParagraphIndex === pIdx;
-            const diffForThisPara = pendingDiffs.find(
-              (d) => d.paragraph_index === pIdx
-            );
-            const paraIssues = issues.filter(
-              (i) => i.paragraph_index === pIdx
-            );
-            const isSpecialBlock =
-              para.startsWith('> [!GHI_CHÚ_TÁC_GIẢ]') || para.trim() === '***';
-
-            return (
-              <div
-                key={pIdx}
-                className={`relative group transition-opacity duration-200 ${
-                  paragraphFocus && !isFocused ? 'opacity-45 hover:opacity-90' : 'opacity-100'
-                }`}
+        {/* AI Ghost Text Interactive Preview Bar (Grounded in Lorebook RAG) */}
+        {ghostAiEnabled && currentGhostSuggestion && canvasMode !== 'markdown' && (
+          <div className="mb-6 p-3 rounded-xl border semantic-info-box flex flex-wrap items-center justify-between gap-2 text-xs select-none">
+            <div className="flex-1 min-w-[240px]">
+              <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                <Sparkles size={13} />
+                <span>
+                  Ghost Text AI (Đoạn {activeParaIdx + 1} · Ngữ cảnh Lorebook:{' '}
+                  {chapter.pov_character_name} tại {chapter.location_tag}):
+                </span>
+              </div>
+              <p className={`italic text-primary ${fontClass}`}>
+                &ldquo;...{currentGhostSuggestion.trim()}&rdquo;
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setGhostVariantIndex((v) => v + 1)}
+                className="px-2.5 py-1 rounded-lg bg-canvas border border-border text-primary font-semibold flex items-center gap-1 hover:opacity-90"
+                title="Đổi gợi ý Ghost Text khác (Alt+\)"
               >
-                {/* Paragraph Number Gutter Indicator on Hover */}
-                <div className="hidden sm:flex items-center gap-1 absolute -left-9 top-2.5 opacity-0 group-hover:opacity-100 transition-opacity select-none">
-                  <span className="text-[11px] font-mono text-muted">
-                    ¶{pIdx + 1}
-                  </span>
-                </div>
+                <RefreshCw size={11} />
+                <span>Đổi gợi ý (Alt+\)</span>
+              </button>
+              <button
+                onClick={() => handleAcceptGhostText(activeParaIdx)}
+                className="px-3 py-1 rounded-lg bg-accent text-white font-semibold flex items-center gap-1 shadow-sm hover:opacity-95"
+                title="Chèn gợi ý Ghost Text vào cuối đoạn đang chọn (Tab)"
+              >
+                <Check size={12} />
+                <span>Chấp nhận (Tab)</span>
+              </button>
+            </div>
+          </div>
+        )}
 
-                {isEditing ? (
-                  /* In-Place Auto-Expanding Editor (Matches Literary Typography 1:1) */
-                  <div className="relative rounded-xl ring-2 ring-accent/60 bg-elevated/30 p-3 transition-all">
-                    <textarea
-                      ref={activeTextareaRef}
-                      value={para}
-                      onChange={(e) =>
-                        handleParagraphChange(pIdx, e.target.value)
-                      }
-                      onKeyDown={(e) => handleKeyDown(e, pIdx)}
-                      onBlur={() => setEditingParagraphIndex(null)}
+        {/* MODE 1: Seamless In-Place Prose Paragraphs */}
+        {canvasMode === 'blocks' && (
+          <div className="flex flex-col gap-5 prose-editor-area">
+            {chapter.paragraphs.map((para, pIdx) => {
+              const isFocused =
+                focusedParagraphIndex === pIdx ||
+                editingParagraphIndex === pIdx;
+              const isEditing = editingParagraphIndex === pIdx;
+              const diffForThisPara = pendingDiffs.find(
+                (d) => d.paragraph_index === pIdx
+              );
+              const paraIssues = issues.filter(
+                (i) => i.paragraph_index === pIdx
+              );
+              const isSpecialBlock =
+                para.startsWith('> [!GHI_CHÚ_TÁC_GIẢ]') ||
+                para.trim() === '***';
+
+              return (
+                <div
+                  key={pIdx}
+                  className={`relative group transition-opacity duration-200 ${
+                    paragraphFocus && !isFocused
+                      ? 'opacity-45 hover:opacity-90'
+                      : 'opacity-100'
+                  }`}
+                >
+                  {/* Paragraph Number Gutter Indicator on Hover */}
+                  <div className="hidden sm:flex items-center gap-1 absolute -left-9 top-2.5 opacity-0 group-hover:opacity-100 transition-opacity select-none">
+                    <span className="text-[11px] font-mono text-muted">
+                      ¶{pIdx + 1}
+                    </span>
+                  </div>
+
+                  {isEditing ? (
+                    /* In-Place Auto-Expanding Editor (Matches Literary Typography 1:1) */
+                    <div className="relative rounded-xl ring-2 ring-accent/60 bg-elevated/30 p-3 transition-all">
+                      <textarea
+                        ref={activeTextareaRef}
+                        value={para}
+                        onChange={(e) =>
+                          handleParagraphChange(pIdx, e.target.value)
+                        }
+                        onKeyDown={(e) => handleKeyDown(e, pIdx)}
+                        onBlur={() => setEditingParagraphIndex(null)}
+                        style={{
+                          fontSize: `${proseFontSize}px`,
+                          lineHeight: 1.85,
+                          textIndent:
+                            firstLineIndent && !isSpecialBlock ? '1.75em' : '0',
+                        }}
+                        className={`w-full bg-transparent resize-none focus:outline-none text-primary ${fontClass}`}
+                        placeholder="Nhập nội dung đoạn văn... (Nhấn Tab để nhận Ghost Text AI, Enter để sang đoạn mới, / để mở lệnh)"
+                      />
+                      {ghostAiEnabled && currentGhostSuggestion && (
+                        <div
+                          className={`mt-1.5 text-xs italic text-muted flex items-center justify-between gap-2 pt-1.5 border-t border-border/40 select-none ${fontClass}`}
+                        >
+                          <span>
+                            <strong className="not-italic semantic-info-text font-sans">
+                              Ghost AI:
+                            </strong>{' '}
+                            {currentGhostSuggestion}
+                          </span>
+                          <button
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleAcceptGhostText(pIdx);
+                            }}
+                            className="ai-ghost-text-badge shrink-0"
+                          >
+                            Tab ↵
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between pt-2 mt-1 border-t border-border/50 text-[11px] text-muted font-sans select-none">
+                        <span>
+                          Đang sửa trực tiếp đoạn {pIdx + 1} ·{' '}
+                          <kbd className="px-1 py-0.5 rounded bg-canvas border border-border font-mono">
+                            Tab
+                          </kbd>{' '}
+                          nhận Ghost AI ·{' '}
+                          <kbd className="px-1 py-0.5 rounded bg-canvas border border-border font-mono">
+                            /
+                          </kbd>{' '}
+                          mở lệnh
+                        </span>
+                        <button
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setEditingParagraphIndex(null);
+                          }}
+                          className="px-2 py-0.5 rounded bg-accent text-white font-semibold"
+                        >
+                          Xong (Esc)
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Seamless Literary Display (Click anywhere on text to edit in-place) */
+                    <div
+                      onClick={() => {
+                        setFocusedParagraphIndex(pIdx);
+                        setEditingParagraphIndex(pIdx);
+                      }}
+                      className={`px-3 py-2 rounded-xl leading-relaxed text-primary ${fontClass} cursor-text transition-all border ${
+                        isFocused
+                          ? 'border-border/80 bg-elevated/25'
+                          : 'border-transparent hover:border-border/50 hover:bg-elevated/15'
+                      }`}
                       style={{
                         fontSize: `${proseFontSize}px`,
                         lineHeight: 1.85,
                         textIndent:
                           firstLineIndent && !isSpecialBlock ? '1.75em' : '0',
                       }}
-                      className={`w-full bg-transparent resize-none focus:outline-none text-primary ${fontClass}`}
-                      placeholder="Nhập nội dung đoạn văn... (Nhấn Enter để sang đoạn mới, Esc để hoàn tất, / để mở lệnh)"
-                    />
-                    <div className="flex items-center justify-between pt-2 mt-1 border-t border-border/50 text-[11px] text-muted font-sans select-none">
-                      <span>
-                        Đang sửa trực tiếp đoạn {pIdx + 1} · Gõ{' '}
-                        <kbd className="px-1 py-0.5 rounded bg-canvas border border-border font-mono">
-                          /
-                        </kbd>{' '}
-                        để gọi AI hoặc chèn thực thể
-                      </span>
-                      <button
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setEditingParagraphIndex(null);
-                        }}
-                        className="px-2 py-0.5 rounded bg-accent text-white font-semibold"
-                      >
-                        Xong (Esc)
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  /* Seamless Literary Display (Click anywhere on text to edit in-place) */
-                  <div
-                    onClick={() => {
-                      setFocusedParagraphIndex(pIdx);
-                      setEditingParagraphIndex(pIdx);
-                    }}
-                    className={`px-3 py-2 rounded-xl leading-relaxed text-primary ${fontClass} cursor-text transition-all border ${
-                      isFocused
-                        ? 'border-border/80 bg-elevated/25'
-                        : 'border-transparent hover:border-border/50 hover:bg-elevated/15'
-                    }`}
-                    style={{
-                      fontSize: `${proseFontSize}px`,
-                      lineHeight: 1.85,
-                      textIndent:
-                        firstLineIndent && !isSpecialBlock ? '1.75em' : '0',
-                    }}
-                    title="Nhấp vào đoạn văn để sửa trực tiếp tại chỗ"
-                  >
-                    <div className="whitespace-pre-wrap">
-                      {para.trim().length === 0 ? (
-                        <span className="text-muted italic">
-                          Đoạn văn trống — nhấp vào đây để bắt đầu viết...
-                        </span>
-                      ) : (
-                        renderDecoratedParagraph(
-                          para,
-                          pIdx,
-                          chapter,
-                          entities,
-                          paraIssues,
-                          (ent, e) => {
-                            e.stopPropagation();
-                            setHoveredEntity(ent);
-                            setHoverCardPos({
-                              x: Math.min(e.clientX, window.innerWidth - 340),
-                              y: e.clientY + 14,
-                            });
-                          },
-                          (issue, e) => {
-                            e.stopPropagation();
-                            setActiveIssuePopover({
-                              issue,
-                              x: Math.min(e.clientX, window.innerWidth - 360),
-                              y: e.clientY + 14,
-                            });
-                          }
-                        )
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Inline Diff Proposal Floating Card (High-Contrast Across All 3 Themes) */}
-                {diffForThisPara && (
-                  <div
-                    className="mt-3 p-4 rounded-xl border-2 shadow-md flex flex-col gap-2.5 select-none animate-in fade-in"
-                    style={{
-                      backgroundColor: 'var(--bg-elevated)',
-                      borderColor: 'var(--accent-color)',
-                    }}
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5 font-bold semantic-success-text">
-                        <Sparkles size={14} />
-                        Đề xuất chỉnh sửa từ {diffForThisPara.agent_name} (Đoạn{' '}
-                        {pIdx + 1}):
-                      </span>
-                      <span className="text-xs font-mono text-muted">
-                        {diffForThisPara.created_at}
-                      </span>
-                    </div>
-
-                    <div
-                      className={`text-sm leading-relaxed flex flex-col gap-2 ${fontClass}`}
+                      title="Nhấp vào đoạn văn để sửa trực tiếp tại chỗ"
                     >
-                      <div className="p-2.5 rounded-lg border semantic-error-box line-through">
-                        {diffForThisPara.original_text}
-                      </div>
-                      <div className="p-2.5 rounded-lg border semantic-success-box font-medium">
-                        {diffForThisPara.proposed_text}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-muted italic">
-                      Lý do: &ldquo;{diffForThisPara.rationale}&rdquo;
-                    </p>
-
-                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60 text-xs">
-                      <button
-                        onClick={() =>
-                          resolveDiffProposal(diffForThisPara.id, 'rejected')
-                        }
-                        className="px-3 py-1.5 rounded-lg bg-canvas hover: opacity-90 border border-border text-primary transition-colors flex items-center gap-1 font-semibold"
-                      >
-                        <X size={13} />
-                        <span>Từ chối (Esc)</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          handleParagraphChange(
+                      <div className="whitespace-pre-wrap">
+                        {para.trim().length === 0 ? (
+                          <span className="text-muted italic">
+                            Đoạn văn trống — nhấp vào đây để bắt đầu viết...
+                          </span>
+                        ) : (
+                          renderDecoratedParagraph(
+                            para,
                             pIdx,
-                            diffForThisPara.proposed_text
-                          );
-                          resolveDiffProposal(diffForThisPara.id, 'accepted');
-                        }}
-                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center gap-1 font-semibold shadow-sm"
-                      >
-                        <Check size={13} />
-                        <span>Chấp nhận (Tab)</span>
-                      </button>
+                            chapter,
+                            entities,
+                            paraIssues,
+                            (ent, e) => {
+                              e.stopPropagation();
+                              handleOpenEntityCard(ent, e.clientX, e.clientY);
+                            },
+                            (issue, e) => {
+                              e.stopPropagation();
+                              handleOpenIssueCard(issue, e.clientX, e.clientY);
+                            }
+                          )
+                        )}
+                        {ghostAiEnabled &&
+                          isFocused &&
+                          currentGhostSuggestion &&
+                          !isSpecialBlock && (
+                            <span
+                              className="ai-ghost-text-widget"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAcceptGhostText(pIdx);
+                              }}
+                              title="Nhấp hoặc nhấn Tab để chèn gợi ý Ghost Text AI"
+                            >
+                              {currentGhostSuggestion}
+                              <kbd className="ai-ghost-text-badge">Tab ↵</kbd>
+                            </span>
+                          )}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  )}
+
+                  {/* Inline Diff Proposal Floating Card (High-Contrast Across All 3 Themes) */}
+                  {diffForThisPara && (
+                    <div
+                      className="mt-3 p-4 rounded-xl border-2 shadow-md flex flex-col gap-2.5 select-none animate-in fade-in"
+                      style={{
+                        backgroundColor: 'var(--bg-elevated)',
+                        borderColor: 'var(--accent-color)',
+                      }}
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1.5 font-bold semantic-success-text">
+                          <Sparkles size={14} />
+                          Đề xuất chỉnh sửa từ {diffForThisPara.agent_name}{' '}
+                          (Đoạn {pIdx + 1}):
+                        </span>
+                        <span className="text-xs font-mono text-muted">
+                          {diffForThisPara.created_at}
+                        </span>
+                      </div>
+
+                      <div
+                        className={`text-sm leading-relaxed flex flex-col gap-2 ${fontClass}`}
+                      >
+                        <div className="p-2.5 rounded-lg border semantic-error-box line-through">
+                          {diffForThisPara.original_text}
+                        </div>
+                        <div className="p-2.5 rounded-lg border semantic-success-box font-medium">
+                          {diffForThisPara.proposed_text}
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-muted italic">
+                        Lý do: &ldquo;{diffForThisPara.rationale}&rdquo;
+                      </p>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60 text-xs">
+                        <button
+                          onClick={() =>
+                            resolveDiffProposal(diffForThisPara.id, 'rejected')
+                          }
+                          className="px-3 py-1.5 rounded-lg bg-canvas hover:opacity-90 border border-border text-primary transition-colors flex items-center gap-1 font-semibold"
+                        >
+                          <X size={13} />
+                          <span>Từ chối (Esc)</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleParagraphChange(
+                              pIdx,
+                              diffForThisPara.proposed_text
+                            );
+                            resolveDiffProposal(diffForThisPara.id, 'accepted');
+                          }}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center gap-1 font-semibold shadow-sm"
+                        >
+                          <Check size={13} />
+                          <span>Chấp nhận (Tab)</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* MODE 2: Full ProseMirror / TipTap Continuous Engine */}
+        {canvasMode === 'tiptap' && (
+          <div
+            className={`novelforge-tiptap-content prose-editor-area ${fontClass} ${
+              firstLineIndent ? 'novelforge-indent-enabled' : ''
+            }`}
+            style={{
+              fontSize: `${proseFontSize}px`,
+              lineHeight: 1.85,
+            }}
+          >
+            <EditorContent editor={tiptapEditor} />
+          </div>
+        )}
+
+        {/* MODE 3: Lossless Bi-Directional Markdown + YAML Frontmatter Inspector */}
+        {canvasMode === 'markdown' && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between px-3 py-2 rounded-xl border semantic-success-box text-xs select-none">
+              <span className="font-semibold">
+                Đồng bộ Markdown hai chiều (Lossless YAML Frontmatter + Block AST): Mọi thay đổi được bảo toàn 100% cấu trúc.
+              </span>
+              <span className="font-mono text-[11px]">
+                {chapter.file_path}
+              </span>
+            </div>
+            <textarea
+              value={rawMarkdownDraft}
+              onChange={(e) => handleRawMarkdownChange(e.target.value)}
+              rows={22}
+              className="w-full p-4 rounded-xl border border-border bg-canvas text-primary font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-accent"
+              spellCheck={false}
+            />
+          </div>
+        )}
 
         {/* Append New Paragraph Action */}
         <div className="mt-8 pt-4 border-t border-border/50 flex justify-center select-none">
@@ -544,7 +920,9 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
               updateChapterParagraphs(chapter.id, updated);
               const newIdx = updated.length - 1;
               setFocusedParagraphIndex(newIdx);
-              setEditingParagraphIndex(newIdx);
+              if (canvasMode === 'blocks') {
+                setEditingParagraphIndex(newIdx);
+              }
             }}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-elevated hover:opacity-90 border border-border text-xs font-semibold text-primary transition-all"
           >
@@ -808,21 +1186,22 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   );
 };
 
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
- * Decorates raw paragraph text with interactive Entity Pills (@Mention/#Location)
- * and Continuity Linter Squiggly Underlines with high-contrast across all 3 themes.
+ * Dynamically decorates raw paragraph text with interactive Lorebook Entity Pills (@Mention/#Location)
+ * and Continuity Linter Squiggly Underlines across all 3 themes.
  */
 function renderDecoratedParagraph(
   text: string,
   pIdx: number,
-  chapter: ChapterDocument,
+  _chapter: ChapterDocument,
   entities: LoreEntity[],
-  issues: ReturnType<typeof runContinuityLinterEngine>,
+  issues: ContinuityIssue[],
   onHoverEntity: (entity: LoreEntity, e: React.MouseEvent) => void,
-  onClickIssue: (
-    issue: ReturnType<typeof runContinuityLinterEngine>[0],
-    e: React.MouseEvent
-  ) => void
+  onClickIssue: (issue: ContinuityIssue, e: React.MouseEvent) => void
 ): React.ReactNode {
   // Author note callout (High contrast across all themes)
   if (text.startsWith('> [!GHI_CHÚ_TÁC_GIẢ]')) {
@@ -853,63 +1232,90 @@ function renderDecoratedParagraph(
     );
   }
 
-  // Tokenize text to highlight entities and linter issues
+  // Dynamically collect all entity names, aliases, and linter issue phrases
   const entityMapByName = new Map<string, LoreEntity>();
-  entities.forEach((e) => {
-    entityMapByName.set(e.title.toLowerCase(), e);
-    e.aliases?.forEach((a) => entityMapByName.set(a.toLowerCase(), e));
-  });
+  const tokensToMatch: string[] = [];
+
+  for (const e of entities) {
+    if (e.entity_type === 'chapter') continue;
+    if (e.title.trim()) {
+      entityMapByName.set(e.title.trim().toLowerCase(), e);
+      tokensToMatch.push(e.title.trim());
+    }
+    for (const a of e.aliases || []) {
+      if (a.trim()) {
+        entityMapByName.set(a.trim().toLowerCase(), e);
+        tokensToMatch.push(a.trim());
+      }
+    }
+  }
+
+  for (const iss of issues) {
+    if (iss.paragraph_index === pIdx && iss.matched_text.trim()) {
+      tokensToMatch.push(iss.matched_text.trim());
+    }
+  }
+
+  // Sort longest tokens first so "Lâm Vũ Linh" matches before "Linh"
+  const uniqueSortedTokens = Array.from(new Set(tokensToMatch)).sort(
+    (a, b) => b.length - a.length
+  );
+
+  if (uniqueSortedTokens.length === 0) {
+    return <span>{text}</span>;
+  }
+
+  const patternSource = uniqueSortedTokens.map(escapeRegExp).join('|');
+  const splitRegex = new RegExp(`(${patternSource})`, 'gi');
 
   return (
     <span>
-      {text
-        .split(
-          /(\b(?:Lâm Vũ Linh|Tiểu Linh|Trần Hạo|Hạo Đen|Vũ Đình Khánh|Chỉ huy Khánh|Kiều Hạ My|Bác sĩ My|Chim Bói Cá|Bến Cảng Đông|Cảng Đông|Tháp Chỉ Huy Aegis|Ổ Khóa Lượng Tử Thần Nông|Lõi Thần Nông|lạnh lẽo|tóc dài)\b)/g
-        )
-        .map((chunk, i) => {
-          const lower = chunk.toLowerCase();
-          const matchedEntity = entityMapByName.get(lower);
+      {text.split(splitRegex).map((chunk, i) => {
+        if (!chunk) return null;
+        const lower = chunk.toLowerCase();
+        const matchedEntity = entityMapByName.get(lower);
 
-          // Check if chunk has a linter issue
-          const matchingIssue = issues.find(
-            (iss) =>
-              iss.paragraph_index === pIdx &&
-              iss.matched_text.toLowerCase() === lower
+        // Check if chunk has a linter issue
+        const matchingIssue = issues.find(
+          (iss) =>
+            iss.paragraph_index === pIdx &&
+            iss.matched_text.toLowerCase() === lower
+        );
+
+        if (matchingIssue) {
+          return (
+            <span
+              key={i}
+              onClick={(e) => onClickIssue(matchingIssue, e)}
+              className={
+                matchingIssue.severity === 'error'
+                  ? 'linter-squiggly-error'
+                  : 'linter-squiggly-warning'
+              }
+              title={`${matchingIssue.message} (Nhấp để xem giải pháp nhanh)`}
+            >
+              {chunk}
+            </span>
           );
+        }
 
-          if (matchingIssue) {
-            return (
-              <span
-                key={i}
-                onClick={(e) => onClickIssue(matchingIssue, e)}
-                className={
-                  matchingIssue.severity === 'error'
-                    ? 'linter-squiggly-error'
-                    : 'linter-squiggly-warning'
-                }
-                title={`${matchingIssue.message} (Nhấp để xem giải pháp nhanh)`}
-              >
-                {chunk}
-              </span>
-            );
-          }
+        if (matchedEntity) {
+          const isLoc = matchedEntity.entity_type === 'location';
+          return (
+            <span
+              key={i}
+              onClick={(e) => onHoverEntity(matchedEntity, e)}
+              onMouseEnter={(e) => onHoverEntity(matchedEntity, e)}
+              className={isLoc ? 'lore-location-pill' : 'entity-mention-pill'}
+              title={`Thực thể Lorebook: ${matchedEntity.title} (Rê chuột hoặc nhấp để mở thẻ thông tin nhanh)`}
+            >
+              {isLoc ? `#${chunk}` : `@${chunk}`}
+            </span>
+          );
+        }
 
-          if (matchedEntity) {
-            const isLoc = matchedEntity.entity_type === 'location';
-            return (
-              <span
-                key={i}
-                onClick={(e) => onHoverEntity(matchedEntity, e)}
-                className={isLoc ? 'lore-location-pill' : 'entity-mention-pill'}
-                title={`Thực thể Lorebook: ${matchedEntity.title} (Nhấp để mở thẻ thông tin nhanh)`}
-              >
-                {isLoc ? `#${chunk}` : `@${chunk}`}
-              </span>
-            );
-          }
-
-          return <span key={i}>{chunk}</span>;
-        })}
+        return <span key={i}>{chunk}</span>;
+      })}
     </span>
   );
 }

@@ -1,6 +1,10 @@
 use crate::core_engine::parser::{
     parse_markdown_with_frontmatter, serialize_markdown_with_frontmatter, ParsedDocument,
 };
+use crate::core_engine::storage::{
+    ensure_project_workspace, sync_workspace_to_sqlite, ProjectWorkspaceLayout,
+    WorkspaceSyncSummary,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -38,6 +42,18 @@ fn scan_dir_recursive(dir_path: &Path) -> Vec<FileTreeNode> {
     }
     entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
     entries
+}
+
+#[tauri::command]
+pub async fn init_project_workspace(
+    project_root: String,
+) -> Result<ProjectWorkspaceLayout, String> {
+    ensure_project_workspace(Path::new(&project_root))
+}
+
+#[tauri::command]
+pub async fn sync_project_sqlite(project_root: String) -> Result<WorkspaceSyncSummary, String> {
+    sync_workspace_to_sqlite(Path::new(&project_root))
 }
 
 #[tauri::command]

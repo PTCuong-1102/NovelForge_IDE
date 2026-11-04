@@ -256,6 +256,65 @@ option {
   text-decoration: line-through;
 }
 
+/* AI Ghost Text Autocomplete Widget (Theme-Adaptive Contrast) */
+.ai-ghost-text-widget {
+  color: var(--text-muted);
+  font-style: italic;
+  opacity: 0.85;
+  padding-left: 2px;
+  transition: opacity 150ms ease;
+}
+
+.ai-ghost-text-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  border-radius: 5px;
+  background-color: var(--semantic-info-bg);
+  color: var(--semantic-info-text);
+  border: 1px solid var(--semantic-info-border);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.ai-ghost-text-badge:hover {
+  filter: brightness(1.08);
+}
+
+/* TipTap / ProseMirror Literary Canvas Layout */
+.novelforge-tiptap-content .ProseMirror {
+  outline: none;
+  min-height: 360px;
+  color: var(--text-primary);
+}
+
+.novelforge-tiptap-content .ProseMirror p {
+  margin-bottom: 1.15em;
+  line-height: 1.85;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background-color 140ms ease, opacity 160ms ease;
+}
+
+.novelforge-tiptap-content.novelforge-indent-enabled .ProseMirror p {
+  text-indent: 1.75em;
+}
+
+.novelforge-tiptap-content .ProseMirror h1,
+.novelforge-tiptap-content .ProseMirror h2,
+.novelforge-tiptap-content .ProseMirror h3 {
+  font-weight: 700;
+  margin-top: 1.2em;
+  margin-bottom: 0.6em;
+  color: var(--text-primary);
+  text-indent: 0;
+}
+
 /* Custom subtle scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

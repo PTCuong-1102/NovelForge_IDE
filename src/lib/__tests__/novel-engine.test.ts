@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   parseMarkdownWithFrontmatter,
   serializeMarkdownWithFrontmatter,
@@ -7,9 +9,19 @@ import {
   scanImplicitEntitiesInChapter,
   runContinuityLinterEngine,
   buildRefactorRenamePreview,
+  generateDeterministicEmbedding768,
+  cosineSimilarity,
+  hybridSearchLoreRag,
   ChapterDocument,
   LoreEntity,
 } from '../tauri-bridge.js';
+import {
+  paragraphsToTipTapDoc,
+  tipTapDocToParagraphs,
+  serializeChapterToLosslessMarkdown,
+  parseLosslessMarkdownToChapter,
+} from '../../components/editor/extensions/lossless-markdown.js';
+import { buildContextualGhostSuggestion } from '../../components/editor/extensions/ghost-text.js';
 
 describe('NovelForge Core Literature Engine Tests', () => {
   const sampleMarkdown = `---
@@ -56,9 +68,9 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
       aliases: ['Tiểu Linh', 'Đặc vụ số 7'],
       file_path: 'lorebook/characters/linh.md',
       status: 'alive',
-      tags: [],
-      summary: '',
-      body: '',
+      tags: ['hacker', 'nhân vật chính'],
+      summary: 'Cựu đặc vụ giải mã tín hiệu của Cục An ninh Mạng, sở hữu cổ tay cơ khí.',
+      body: 'Lâm Vũ Linh có mái tóc ngắn ngang vai và thiết bị giải mã lượng tử.',
       updated_at: '',
     },
     {
@@ -72,7 +84,7 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
       death_chapter_title: 'Chương 5: Huyết Chiến',
       death_date: '12/10/2026',
       tags: [],
-      summary: '',
+      summary: 'Đặc vụ tiền trạm hy sinh tại Chương 5.',
       body: '',
       updated_at: '',
     },
@@ -84,7 +96,19 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
       file_path: 'lorebook/locations/cang-dong.md',
       status: 'active',
       tags: [],
-      summary: '',
+      summary: 'Khu cảng công nghiệp bỏ hoang ngập mưa axit.',
+      body: '',
+      updated_at: '',
+    },
+    {
+      id: 'item_than_nong',
+      entity_type: 'item',
+      title: 'Ổ Khóa Lượng Tử Thần Nông',
+      aliases: ['Lõi Thần Nông'],
+      file_path: 'lorebook/items/than-nong.md',
+      status: 'active',
+      tags: [],
+      summary: 'Thiết bị mã hóa tối mật.',
       body: '',
       updated_at: '',
     },
@@ -109,6 +133,8 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
     paragraphs: [
       'Gió lạnh lẽo thổi qua bến cảng lạnh lẽo giữa đêm lạnh lẽo.',
       'Lâm Vũ Linh rút súng khi thấy Trần Hạo bước ra từ bóng tối.',
+      '***',
+      '> [!GHI_CHÚ_TÁC_GIẢ] Kiểm tra lại chi tiết **Lõi Thần Nông** và *tín hiệu ngầm*.',
     ],
     updated_at: '',
   };
@@ -144,5 +170,80 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
     assert.strictEqual(previews.length, 1);
     assert.strictEqual(previews[0].matched_token, 'Lâm Vũ Linh');
     assert(previews[0].preview_sentence.includes('Lâm Hạ Vy'));
+  });
+
+  it('8. Lossless Bi-Directional TipTap / ProseMirror <-> Markdown Serialization', () => {
+    const doc = paragraphsToTipTapDoc(mockChapter8.paragraphs);
+    assert.strictEqual(doc.type, 'doc');
+    assert.strictEqual(doc.content?.length, 4);
+
+    const roundTripParagraphs = tipTapDocToParagraphs(doc);
+    assert.deepStrictEqual(roundTripParagraphs, mockChapter8.paragraphs);
+
+    const fullMd = serializeChapterToLosslessMarkdown(mockChapter8);
+    const reparsed = parseLosslessMarkdownToChapter(fullMd);
+    assert.deepStrictEqual(reparsed.paragraphs, mockChapter8.paragraphs);
+    assert.strictEqual(reparsed.frontmatter.id, 'ch_08');
+    assert.strictEqual(reparsed.frontmatterKeysOrder[0], 'id');
+  });
+
+  it('9. SQLite-vec 768-d Vector Embedding & Hybrid Lorebook RAG Search', () => {
+    const vecA = generateDeterministicEmbedding768('Lâm Vũ Linh cổ tay cơ khí giải mã');
+    const vecB = generateDeterministicEmbedding768('Lâm Vũ Linh thiết bị giải mã cơ khí');
+    const vecC = generateDeterministicEmbedding768('Bến cảng công nghiệp mưa axit');
+
+    assert.strictEqual(vecA.length, 768);
+    const simAB = cosineSimilarity(vecA, vecB);
+    const simAC = cosineSimilarity(vecA, vecC);
+    assert(simAB > simAC, 'Related character query should have higher cosine similarity');
+
+    const ragResults = hybridSearchLoreRag(
+      'Lâm Vũ Linh giải mã tín hiệu',
+      mockEntities,
+      'character'
+    );
+    assert(ragResults.length > 0);
+    assert.strictEqual(ragResults[0].entity_id, 'char_linh_001');
+  });
+
+  it('10. AI Ghost Text generates context-aware Lorebook-grounded continuations', () => {
+    const paraWithItem = 'Tiểu Linh mở hộp chứa Ổ Khóa Lượng Tử Thần Nông.';
+    const ghost0 = buildContextualGhostSuggestion(
+      paraWithItem,
+      mockChapter8,
+      mockEntities,
+      0
+    );
+    const ghost1 = buildContextualGhostSuggestion(
+      paraWithItem,
+      mockChapter8,
+      mockEntities,
+      1
+    );
+    assert(ghost0.includes('Ổ Khóa Lượng Tử Thần Nông'));
+    assert(ghost1.includes('Ổ Khóa Lượng Tử Thần Nông'));
+    assert.notStrictEqual(ghost0, ghost1, 'Cycling variantIndex should return distinct suggestion');
+  });
+
+  it('11. Rust Tauri Backend Core modules (storage, parser, indexer, linter, rag_engine) are present and complete', () => {
+    const rootDir = process.cwd();
+    const requiredRustFiles = [
+      'src-tauri/src/core_engine/storage.rs',
+      'src-tauri/src/core_engine/parser.rs',
+      'src-tauri/src/core_engine/indexer.rs',
+      'src-tauri/src/core_engine/linter.rs',
+      'src-tauri/src/ai_bridge/rag_engine.rs',
+    ];
+    for (const rel of requiredRustFiles) {
+      const fullPath = path.join(rootDir, rel);
+      assert(fs.existsSync(fullPath), `Missing Rust core module: ${rel}`);
+    }
+
+    const indexerContent = fs.readFileSync(
+      path.join(rootDir, 'src-tauri/src/core_engine/indexer.rs'),
+      'utf8'
+    );
+    assert(indexerContent.includes('USING vec0('));
+    assert(indexerContent.includes('FLOAT[768]'));
   });
 });

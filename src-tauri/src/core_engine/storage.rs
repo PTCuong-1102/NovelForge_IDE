@@ -1,0 +1,366 @@
+use crate::ai_bridge::rag_engine::upsert_rag_chunk;
+use crate::core_engine::indexer::{
+    compute_content_hash, init_sqlite_db, replace_chapter_entity_mentions, upsert_entity_record,
+    EntityMentionRecord, LoreEntityRecord,
+};
+use crate::core_engine::linter::{scan_implicit_entities, LoreCharacterSpec};
+use crate::core_engine::parser::{
+    parse_markdown_with_frontmatter, serialize_markdown_with_ordered_frontmatter, ParsedDocument,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectWorkspaceLayout {
+    pub project_root: String,
+    pub novelforge_dir: String,
+    pub sqlite_db_path: String,
+    pub config_path: String,
+    pub manuscript_dir: String,
+    pub lorebook_dir: String,
+    pub timeline_path: String,
+    pub exports_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceSyncSummary {
+    pub entities_indexed: usize,
+    pub chapters_indexed: usize,
+    pub mentions_recorded: usize,
+    pub rag_chunks_indexed: usize,
+    pub sqlite_db_path: String,
+}
+
+/// Ensures the standard Local-First directory layout defined in `.docs/prd-technical-architecture.md` (Section 3.1)
+/// exists on disk and initializes `.novelforge/index.sqlite`.
+pub fn ensure_project_workspace(project_root: &Path) -> Result<ProjectWorkspaceLayout, String> {
+    let novelforge_dir = project_root.join(".novelforge");
+    let snapshots_dir = novelforge_dir.join("snapshots");
+    let sqlite_db_path = novelforge_dir.join("index.sqlite");
+    let config_path = novelforge_dir.join("config.json");
+    let manuscript_dir = project_root.join("manuscript");
+    let lorebook_dir = project_root.join("lorebook");
+    let characters_dir = lorebook_dir.join("characters");
+    let locations_dir = lorebook_dir.join("locations");
+    let items_dir = lorebook_dir.join("items");
+    let timeline_path = lorebook_dir.join("timeline.json");
+    let exports_dir = project_root.join("exports");
+
+    for dir in [
+        &novelforge_dir,
+        &snapshots_dir,
+        &manuscript_dir,
+        &lorebook_dir,
+        &characters_dir,
+        &locations_dir,
+        &items_dir,
+        &exports_dir,
+    ] {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("Failed to create directory {}: {}", dir.display(), e))?;
+    }
+
+    if !config_path.exists() {
+        let default_config = json!({
+            "project_name": project_root.file_name().and_then(|s| s.to_str()).unwrap_or("NovelForge Project"),
+            "version": "1.0.0",
+            "linter": {
+                "dead_character_check": true,
+                "attribute_consistency_check": true,
+                "pacing_repetition_threshold": 4
+            },
+            "rag": {
+                "engine": "sqlite-vec",
+                "embedding_dim": 768
+            }
+        });
+        let _ = std::fs::write(
+            &config_path,
+            serde_json::to_string_pretty(&default_config).unwrap_or_default(),
+        );
+    }
+
+    if !timeline_path.exists() {
+        let default_timeline = json!({
+            "calendar_system": "Gregorian",
+            "events": []
+        });
+        let _ = std::fs::write(
+            &timeline_path,
+            serde_json::to_string_pretty(&default_timeline).unwrap_or_default(),
+        );
+    }
+
+    let _conn = init_sqlite_db(&sqlite_db_path)
+        .map_err(|e| format!("Failed to initialize SQLite database: {}", e))?;
+
+    Ok(ProjectWorkspaceLayout {
+        project_root: project_root.to_string_lossy().to_string(),
+        novelforge_dir: novelforge_dir.to_string_lossy().to_string(),
+        sqlite_db_path: sqlite_db_path.to_string_lossy().to_string(),
+        config_path: config_path.to_string_lossy().to_string(),
+        manuscript_dir: manuscript_dir.to_string_lossy().to_string(),
+        lorebook_dir: lorebook_dir.to_string_lossy().to_string(),
+        timeline_path: timeline_path.to_string_lossy().to_string(),
+        exports_dir: exports_dir.to_string_lossy().to_string(),
+    })
+}
+
+/// Reads a `.md` file from disk and parses its YAML frontmatter + Markdown AST losslessly.
+pub fn load_markdown_document(file_path: &Path) -> Result<ParsedDocument, String> {
+    let raw = std::fs::read_to_string(file_path)
+        .map_err(|e| format!("Failed to read markdown file {}: {}", file_path.display(), e))?;
+    Ok(parse_markdown_with_frontmatter(&raw))
+}
+
+/// Saves a `.md` file atomically using ordered YAML frontmatter + lossless Markdown body.
+pub fn save_markdown_document(
+    file_path: &Path,
+    frontmatter: &HashMap<String, Value>,
+    ordered_keys: &[String],
+    body: &str,
+) -> Result<String, String> {
+    if let Some(parent) = file_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+    let serialized = serialize_markdown_with_ordered_frontmatter(frontmatter, ordered_keys, body);
+    std::fs::write(file_path, &serialized)
+        .map_err(|e| format!("Failed to write markdown file {}: {}", file_path.display(), e))?;
+    Ok(compute_content_hash(&serialized))
+}
+
+fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_markdown_files(&path, out);
+            } else if path.extension().and_then(|s| s.to_str()) == Some("md") {
+                out.push(path);
+            }
+        }
+    }
+}
+
+/// Scans `lorebook/` and `manuscript/` markdown files, synchronizing all entities,
+/// implicit entity mentions, and 768-dim `sqlite-vec` RAG embeddings into `.novelforge/index.sqlite`.
+pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSummary, String> {
+    let layout = ensure_project_workspace(project_root)?;
+    let db_path = Path::new(&layout.sqlite_db_path);
+    let conn = init_sqlite_db(db_path).map_err(|e| e.to_string())?;
+
+    let mut lore_files = Vec::new();
+    collect_markdown_files(Path::new(&layout.lorebook_dir), &mut lore_files);
+
+    let mut manuscript_files = Vec::new();
+    collect_markdown_files(Path::new(&layout.manuscript_dir), &mut manuscript_files);
+
+    let mut entities_indexed = 0usize;
+    let mut chapters_indexed = 0usize;
+    let mut mentions_recorded = 0usize;
+    let mut rag_chunks_indexed = 0usize;
+    let mut character_specs = Vec::new();
+
+    // 1. Index Lorebook files (`characters/`, `locations/`, `items/`)
+    for file_path in &lore_files {
+        let Ok(raw) = std::fs::read_to_string(file_path) else {
+            continue;
+        };
+        let parsed = parse_markdown_with_frontmatter(&raw);
+        let rel_path = file_path
+            .strip_prefix(project_root)
+            .unwrap_or(file_path)
+            .to_string_lossy()
+            .to_string();
+
+        let id = parsed
+            .frontmatter
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                file_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("entity")
+                    .to_string()
+            });
+
+        let entity_type = parsed
+            .frontmatter
+            .get("type")
+            .or_else(|| parsed.frontmatter.get("entity_type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| {
+                if rel_path.contains("locations") {
+                    "location"
+                } else if rel_path.contains("items") {
+                    "item"
+                } else {
+                    "character"
+                }
+            })
+            .to_string();
+
+        let title = parsed
+            .frontmatter
+            .get("name")
+            .or_else(|| parsed.frontmatter.get("title"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| parsed.headings.first().cloned())
+            .unwrap_or_else(|| id.clone());
+
+        let aliases: Vec<String> = parsed
+            .frontmatter
+            .get("aliases")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let record = LoreEntityRecord {
+            id: id.clone(),
+            entity_type: entity_type.clone(),
+            title: title.clone(),
+            aliases: aliases.clone(),
+            file_path: rel_path,
+            metadata: serde_json::to_value(&parsed.frontmatter).unwrap_or(Value::Null),
+            content_hash: compute_content_hash(&raw),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        };
+
+        upsert_entity_record(&conn, &record).map_err(|e| e.to_string())?;
+        entities_indexed += 1;
+
+        // Index into `sqlite-vec` RAG store
+        let chunk_text = if parsed.body.trim().is_empty() {
+            title.clone()
+        } else {
+            parsed.body.clone()
+        };
+        upsert_rag_chunk(
+            &conn,
+            &format!("chunk_{}", id),
+            &id,
+            &title,
+            &entity_type,
+            &chunk_text,
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+        rag_chunks_indexed += 1;
+
+        character_specs.push(LoreCharacterSpec {
+            id,
+            name: title,
+            aliases,
+            status: parsed
+                .frontmatter
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("alive")
+                .to_string(),
+            death_chapter_order: parsed
+                .frontmatter
+                .get("death_chapter_order")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32),
+            death_date: parsed
+                .frontmatter
+                .get("death_date")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            death_chapter_title: parsed
+                .frontmatter
+                .get("death_chapter_title")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            attributes: HashMap::new(),
+        });
+    }
+
+    // 2. Index Manuscript chapters & build `entity_mentions` graph
+    for file_path in &manuscript_files {
+        let Ok(raw) = std::fs::read_to_string(file_path) else {
+            continue;
+        };
+        let parsed = parse_markdown_with_frontmatter(&raw);
+        let rel_path = file_path
+            .strip_prefix(project_root)
+            .unwrap_or(file_path)
+            .to_string_lossy()
+            .to_string();
+
+        let chapter_id = parsed
+            .frontmatter
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                file_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("chapter")
+                    .to_string()
+            });
+
+        let title = parsed
+            .frontmatter
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| parsed.headings.first().cloned())
+            .unwrap_or_else(|| chapter_id.clone());
+
+        let record = LoreEntityRecord {
+            id: chapter_id.clone(),
+            entity_type: "chapter".to_string(),
+            title: title.clone(),
+            aliases: Vec::new(),
+            file_path: rel_path,
+            metadata: serde_json::to_value(&parsed.frontmatter).unwrap_or(Value::Null),
+            content_hash: compute_content_hash(&raw),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        };
+
+        upsert_entity_record(&conn, &record).map_err(|e| e.to_string())?;
+        chapters_indexed += 1;
+
+        let spans = scan_implicit_entities(&parsed.paragraphs, &character_specs);
+        let mention_records: Vec<EntityMentionRecord> = spans
+            .into_iter()
+            .map(|s| EntityMentionRecord {
+                id: 0,
+                source_chapter_id: chapter_id.clone(),
+                target_entity_id: s.entity_id,
+                paragraph_index: s.paragraph_index,
+                char_offset: s.start_offset,
+                context_snippet: parsed
+                    .paragraphs
+                    .get(s.paragraph_index)
+                    .cloned()
+                    .unwrap_or_default(),
+            })
+            .collect();
+
+        replace_chapter_entity_mentions(&conn, &chapter_id, &mention_records)
+            .map_err(|e| e.to_string())?;
+        mentions_recorded += mention_records.len();
+    }
+
+    Ok(WorkspaceSyncSummary {
+        entities_indexed,
+        chapters_indexed,
+        mentions_recorded,
+        rag_chunks_indexed,
+        sqlite_db_path: layout.sqlite_db_path,
+    })
+}
+

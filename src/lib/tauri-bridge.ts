@@ -488,3 +488,137 @@ export function buildRefactorRenamePreview(
 
   return results;
 }
+
+export interface RagSearchResult {
+  chunk_id: string;
+  entity_id: string;
+  title: string;
+  entity_type: EntityType;
+  snippet: string;
+  score: number;
+}
+
+/**
+ * Generates a deterministic, L2-normalized 768-dimensional embedding vector (`FLOAT[768]`)
+ * mirroring `src-tauri/src/ai_bridge/rag_engine.rs` (`sqlite-vec` schema).
+ */
+export function generateDeterministicEmbedding768(text: string): Float32Array {
+  const dim = 768;
+  const vec = new Float32Array(dim);
+  const normalized = text.toLowerCase();
+  const words = normalized
+    .split(/\s+/)
+    .map((w) => w.replace(/[.,!?;:()[\]{}"'“”‘’—–\-…]/g, ''))
+    .filter(Boolean);
+
+  if (words.length === 0) return vec;
+
+  const projectToken = (token: string, weight: number) => {
+    let h1 = 2166136261;
+    let h2 = 16777619;
+    for (let i = 0; i < token.length; i++) {
+      const code = token.charCodeAt(i);
+      h1 ^= code;
+      h1 = Math.imul(h1, 16777619);
+      h2 ^= code + i * 31;
+      h2 = Math.imul(h2, 1099511623);
+    }
+    for (let slot = 0; slot < 4; slot++) {
+      const mixed = Math.imul(h1 ^ (h2 >>> slot), 2654435761) >>> 0;
+      const coord = mixed % dim;
+      const sign = (mixed & (1 << (slot + 4))) === 0 ? 1 : -1;
+      vec[coord] += sign * weight;
+    }
+  };
+
+  for (const w of words) {
+    projectToken(w, 1.6);
+  }
+  for (let i = 0; i + 1 < words.length; i++) {
+    projectToken(`${words[i]}_${words[i + 1]}`, 2.2);
+  }
+  for (let i = 0; i + 2 < normalized.length; i++) {
+    projectToken(normalized.slice(i, i + 3), 0.45);
+  }
+
+  let sumSq = 0;
+  for (let i = 0; i < dim; i++) sumSq += vec[i] * vec[i];
+  const norm = Math.sqrt(sumSq);
+  if (norm > 0) {
+    for (let i = 0; i < dim; i++) vec[i] /= norm;
+  }
+  return vec;
+}
+
+/**
+ * Computes cosine similarity between two 768-d vectors.
+ */
+export function cosineSimilarity(a: Float32Array | number[], b: Float32Array | number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+/**
+ * Performs Hybrid Search (`BM25` + 768-d `sqlite-vec` cosine similarity) across Lorebook entities.
+ */
+export function hybridSearchLoreRag(
+  query: string,
+  entities: LoreEntity[],
+  entityTypeFilter?: EntityType | 'all',
+  topK = 5
+): RagSearchResult[] {
+  const qTrim = query.trim();
+  if (!qTrim) return [];
+
+  const qVec = generateDeterministicEmbedding768(qTrim);
+  const qLower = qTrim.toLowerCase();
+  const qTerms = qLower.split(/\s+/).filter(Boolean);
+
+  const scored: RagSearchResult[] = [];
+
+  for (const ent of entities) {
+    if (entityTypeFilter && entityTypeFilter !== 'all' && ent.entity_type !== entityTypeFilter) {
+      continue;
+    }
+
+    const fullText = `${ent.title} ${(ent.aliases || []).join(' ')} ${ent.summary} ${ent.body} ${
+      ent.appearance || ''
+    } ${ent.personality || ''}`;
+    const docVec = generateDeterministicEmbedding768(fullText);
+    const vecSim = Math.max(0, cosineSimilarity(qVec, docVec));
+
+    const lowerDoc = fullText.toLowerCase();
+    const lowerTitle = ent.title.toLowerCase();
+    let bm25Hits = 0;
+    for (const term of qTerms) {
+      if (lowerTitle.includes(term)) bm25Hits += 1.5;
+      else if (lowerDoc.includes(term)) bm25Hits += 1.0;
+    }
+    const bm25Score = Math.min(1, bm25Hits / Math.max(1, qTerms.length));
+    const combined = Math.min(0.99, Number((0.55 * vecSim + 0.45 * bm25Score).toFixed(2)));
+
+    if (combined > 0.02) {
+      scored.push({
+        chunk_id: `chunk_${ent.id}`,
+        entity_id: ent.id,
+        title: ent.title,
+        entity_type: ent.entity_type,
+        snippet: ent.summary || ent.body,
+        score: combined,
+      });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, Math.max(1, topK));
+}
+

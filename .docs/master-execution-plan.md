@@ -25,14 +25,21 @@ novelforge-ide/
 │   │   │   ├── DockLayout.tsx       # Quản lý Split-view, Multi-tab (Dockview)
 │   │   │   └── StatusBar.tsx        # Đếm từ, trạng thái Git, trạng thái AI Agent
 │   │   ├── editor/                  # Trình soạn thảo kiểu Notion + IntelliJ
-│   │   │   ├── NovelEditor.tsx      # Core TipTap Editor
-│   │   │   ├── extensions/          # Custom Nodes: @Mention, #LoreTag, InlineDiff, LinterMark
+│   │   │   ├── NovelEditor.tsx      # Core TipTap / ProseMirror & In-Place Paper Editor
+│   │   │   ├── ChapterHeaderProperties.tsx
+│   │   │   ├── extensions/          # Custom Extensions: Lossless Markdown, @Mention/#LoreTag, GhostText, LinterMark
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── lossless-markdown.ts
+│   │   │   │   ├── entity-highlighter.ts
+│   │   │   │   └── ghost-text.ts
 │   │   │   └── SlashMenu.tsx        # Menu lệnh nhanh khi gõ '/'
 │   │   ├── lorebook/                # Giao diện quản lý Thế giới quan (Notion Database view)
 │   │   │   ├── CharacterSheet.tsx
+│   │   │   ├── LoreDatabaseView.tsx
 │   │   │   ├── TimelineBoard.tsx
 │   │   │   └── RelationshipGraph.tsx
 │   │   └── ai-hub/                  # Trung tâm điều khiển AI (Cline/OpenCode/MCP)
+│   │       ├── RightDock.tsx
 │   │       ├── AgentTerminal.tsx
 │   │       ├── ComposerPanel.tsx
 │   │       └── DiffReviewBar.tsx
@@ -41,7 +48,7 @@ novelforge-ide/
 │   │   ├── useEditorStore.ts
 │   │   └── useAgentStore.ts
 │   └── lib/
-│       ├── tauri-bridge.ts          # Type-safe wrappers cho hàm invoke() của Tauri
+│       ├── tauri-bridge.ts          # Type-safe wrappers cho hàm invoke() của Tauri & RAG/Linter Engine
 │       └── shortcuts.ts             # Quản lý phím tắt toàn cục (Keybindings)
 │
 └── src-tauri/                       # BACKEND (Rust Core Engine)
@@ -56,9 +63,10 @@ novelforge-ide/
         │   ├── linter_cmd.rs
         │   └── ai_cmd.rs
         ├── core_engine/             # Logic nghiệp vụ cốt lõi
-        │   ├── parser.rs            # Phân tích Markdown + YAML Frontmatter (pulldown-cmark)
-        │   ├── indexer.rs           # Đồng bộ file vào SQLite + Tạo chỉ mục
-        │   ├── linter.rs            # Bộ kiểm tra logic cốt truyện & thực thể
+        │   ├── storage.rs           # Điều phối lưu trữ Local-First (.novelforge/, đồng bộ SQLite)
+        │   ├── parser.rs            # Phân tích Lossless Markdown + YAML Frontmatter (pulldown-cmark)
+        │   ├── indexer.rs           # Đồng bộ file vào SQLite + Tạo chỉ mục (entities, entity_mentions, sqlite-vec)
+        │   ├── linter.rs            # Bộ kiểm tra logic cốt truyện & thực thể (Aho-Corasick)
         │   └── refactor.rs          # Đổi tên thực thể an toàn trên toàn dự án
         ├── ai_bridge/               # Hệ thống kết nối AI đa nền tảng
         │   ├── mcp_server.rs        # Máy chủ MCP nội bộ cung cấp Tools cho Cline/Antigravity
