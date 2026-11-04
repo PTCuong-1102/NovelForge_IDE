@@ -1,33 +1,221 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import {
+  ReactFlow,
+  Controls,
+  Background,
+  MiniMap,
+  Node,
+  Edge,
+  MarkerType,
+  Handle,
+  Position,
+  NodeProps,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import {
   Share2,
   Clock,
-  Info,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
   ChevronRight,
+  User,
+  Shield,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
+import { LoreEntity } from '@/lib/tauri-bridge';
+
+interface CharacterNodeData extends Record<string, unknown> {
+  entity: LoreEntity;
+  isDead: boolean;
+  role: string;
+  faction: string;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}
+
+const CharacterNode: React.FC<NodeProps<Node<CharacterNodeData>>> = ({ data }) => {
+  const { entity, isDead, role, faction, selected, onSelect } = data;
+
+  return (
+    <div
+      onClick={() => onSelect(entity.id)}
+      className={`relative px-4 py-3 rounded-2xl shadow-xl border-2 transition-all cursor-pointer min-w-[170px] select-none ${
+        selected
+          ? 'border-emerald-500 ring-2 ring-emerald-500/30 scale-105'
+          : isDead
+          ? 'border-red-500/60 bg-red-950/20'
+          : 'border-border/80 hover:border-emerald-400'
+      }`}
+      style={{
+        backgroundColor: 'var(--bg-elevated)',
+        color: 'var(--text-primary)',
+      }}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-emerald-500 !w-2 !h-2" />
+      <Handle type="source" position={Position.Bottom} className="!bg-emerald-500 !w-2 !h-2" />
+      <Handle type="target" position={Position.Left} className="!bg-emerald-500 !w-2 !h-2" />
+      <Handle type="source" position={Position.Right} className="!bg-emerald-500 !w-2 !h-2" />
+
+      <div className="flex items-center gap-2.5">
+        <div
+          className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs text-white shadow ${
+            isDead ? 'bg-red-600' : 'bg-emerald-600'
+          }`}
+        >
+          {entity.title.slice(0, 2).toUpperCase()}
+        </div>
+        <div className="overflow-hidden">
+          <div className="font-bold text-xs truncate max-w-[100px] text-primary">
+            {entity.title}
+          </div>
+          <div className="text-[10px] text-muted truncate max-w-[100px]">
+            {role || 'Nhân vật'}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between text-[9px]">
+        <span className="text-muted truncate max-w-[85px]">{faction || 'Trung lập'}</span>
+        <span
+          className={`px-1.5 py-0.5 rounded font-semibold ${
+            isDead ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
+          }`}
+        >
+          {isDead ? 'Tử vong' : 'Còn sống'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const nodeTypes = {
+  characterNode: CharacterNode,
+};
 
 export const RelationshipGraph: React.FC = () => {
   const { entities, relations, openTab } = useWorkspaceStore();
   const [chapterFilter, setChapterFilter] = useState(8);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
-    'char_linh_001'
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>('char_linh_001');
+
+  const characters = useMemo(
+    () => entities.filter((e) => e.entity_type === 'character'),
+    [entities]
   );
 
-  const characters = entities.filter((e) => e.entity_type === 'character');
   const selectedEntity = characters.find((c) => c.id === selectedNodeId);
 
-  // Active relations for the given chapter timeline position
-  const activeRelations = relations.filter(
-    (r) =>
-      r.min_chapter <= chapterFilter &&
-      (!r.max_chapter || r.max_chapter >= chapterFilter)
+  // Filter edges according to chapter slider
+  const activeRelations = useMemo(
+    () =>
+      relations.filter(
+        (r) =>
+          r.min_chapter <= chapterFilter &&
+          (!r.max_chapter || r.max_chapter >= chapterFilter)
+      ),
+    [relations, chapterFilter]
   );
+
+  // Position nodes in an aesthetic circular/force layout
+  const nodes: Node<CharacterNodeData>[] = useMemo(() => {
+    const centerIdx = characters.findIndex((c) => c.id === 'char_linh_001');
+    const centerChar = characters[centerIdx] || characters[0];
+    const otherChars = characters.filter((c) => c.id !== centerChar?.id);
+
+    const result: Node<CharacterNodeData>[] = [];
+
+    // Center protagonist
+    if (centerChar) {
+      result.push({
+        id: centerChar.id,
+        type: 'characterNode',
+        position: { x: 380, y: 260 },
+        data: {
+          entity: centerChar,
+          isDead: centerChar.status === 'dead',
+          role: centerChar.role || 'Protagonist',
+          faction: centerChar.faction || 'Aegis',
+          selected: selectedNodeId === centerChar.id,
+          onSelect: (id) => setSelectedNodeId(id),
+        },
+      });
+    }
+
+    // Other characters around
+    const radius = 250;
+    otherChars.forEach((ch, idx) => {
+      const angle = (idx * (2 * Math.PI)) / Math.max(1, otherChars.length) - Math.PI / 2;
+      const x = 380 + radius * Math.cos(angle);
+      const y = 260 + radius * Math.sin(angle);
+
+      const isDead =
+        ch.status === 'dead' &&
+        ch.death_chapter_order !== undefined &&
+        chapterFilter >= ch.death_chapter_order;
+
+      result.push({
+        id: ch.id,
+        type: 'characterNode',
+        position: { x, y },
+        data: {
+          entity: ch,
+          isDead,
+          role: ch.role || '',
+          faction: ch.faction || '',
+          selected: selectedNodeId === ch.id,
+          onSelect: (id) => setSelectedNodeId(id),
+        },
+      });
+    });
+
+    return result;
+  }, [characters, selectedNodeId, chapterFilter]);
+
+  // Edges mapped to React Flow specification
+  const edges: Edge[] = useMemo(() => {
+    return activeRelations.map((rel) => {
+      const isBetrayal = rel.relation_type === 'betrayal';
+      const isEnemy = rel.relation_type === 'enemy';
+      const isMentor = rel.relation_type === 'mentor';
+
+      const strokeColor = isBetrayal
+        ? '#F59E0B'
+        : isEnemy
+        ? '#EF4444'
+        : isMentor
+        ? '#A855F7'
+        : '#10B981';
+
+      return {
+        id: rel.id,
+        source: rel.source_id,
+        target: rel.target_id,
+        label: rel.label,
+        type: 'smoothstep',
+        animated: rel.relation_type === 'ally',
+        style: {
+          stroke: strokeColor,
+          strokeWidth: 2,
+        },
+        labelStyle: {
+          fill: 'var(--text-primary)',
+          fontWeight: 600,
+          fontSize: 10,
+        },
+        labelBgStyle: {
+          fill: 'var(--bg-elevated)',
+          fillOpacity: 0.9,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: strokeColor,
+          width: 16,
+          height: 16,
+        },
+      };
+    });
+  }, [activeRelations]);
 
   return (
     <div
@@ -43,12 +231,12 @@ export const RelationshipGraph: React.FC = () => {
         }}
       >
         <div className="flex items-center gap-2">
-          <Share2 size={16} className="text-purple-400" />
+          <Share2 size={16} className="text-emerald-500" />
           <span className="font-bold text-primary">
-            Sơ Đồ Mối Quan Hệ Nhân Vật Theo Tiến Trình Cốt Truyện
+            Sơ Đồ Mối Quan Hệ Nhân Vật (React Flow Graph)
           </span>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 font-semibold">
-            React Flow Canvas
+          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">
+            @xyflow/react Engine
           </span>
         </div>
 
@@ -63,89 +251,42 @@ export const RelationshipGraph: React.FC = () => {
             max={20}
             value={chapterFilter}
             onChange={(e) => setChapterFilter(Number(e.target.value))}
-            className="w-32 accent-emerald-500 cursor-pointer"
+            className="w-36 accent-emerald-500 cursor-pointer"
           />
         </div>
       </div>
 
       {/* Main Canvas Area */}
       <div className="flex-1 relative flex">
-        {/* Node Canvas Simulator */}
-        <div className="flex-1 relative p-8 flex items-center justify-center overflow-auto bg-[radial-gradient(#262B36_1px,transparent_1px)] [background-size:16px_16px]">
-          {/* Circular Graph Layout */}
-          <div className="relative w-[500px] h-[500px] rounded-full border border-dashed border-border/60 flex items-center justify-center">
-            {/* Center Node (Lâm Vũ Linh) */}
-            <div
-              onClick={() => setSelectedNodeId('char_linh_001')}
-              className={`absolute cursor-pointer p-4 rounded-2xl shadow-xl border-2 flex flex-col items-center gap-1 transition-all ${
-                selectedNodeId === 'char_linh_001'
-                  ? 'border-emerald-500 scale-110 shadow-emerald-500/20'
-                  : 'border-border/80 hover:border-emerald-400'
-              }`}
-              style={{ backgroundColor: 'var(--bg-elevated)' }}
-            >
-              <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-sm">
-                LVL
-              </div>
-              <span className="font-bold text-xs text-primary">Lâm Vũ Linh</span>
-              <span className="text-[9px] text-muted">Protagonist</span>
-            </div>
-
-            {/* Surrounding Nodes */}
-            {characters
-              .filter((c) => c.id !== 'char_linh_001')
-              .map((char, idx) => {
-                const angle = (idx * (360 / (characters.length - 1)) * Math.PI) / 180;
-                const radius = 190;
-                const left = 250 + radius * Math.cos(angle) - 55;
-                const top = 250 + radius * Math.sin(angle) - 45;
-
-                const isSelected = selectedNodeId === char.id;
-
-                return (
-                  <div
-                    key={char.id}
-                    onClick={() => setSelectedNodeId(char.id)}
-                    className={`absolute cursor-pointer p-3 rounded-xl shadow-lg border-2 flex flex-col items-center gap-1 transition-all w-28 ${
-                      isSelected
-                        ? 'border-accent scale-110 shadow-accent/20'
-                        : 'border-border hover:border-muted'
-                    }`}
-                    style={{
-                      left: `${left}px`,
-                      top: `${top}px`,
-                      backgroundColor: 'var(--bg-elevated)',
-                    }}
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white ${
-                        char.status === 'dead' ? 'bg-red-500' : 'bg-blue-500'
-                      }`}
-                    >
-                      {char.title.slice(0, 2).toUpperCase()}
-                    </div>
-                    <span className="font-semibold text-[11px] text-primary truncate max-w-[90px]">
-                      {char.title}
-                    </span>
-                    <span
-                      className={`text-[9px] px-1 rounded ${
-                        char.status === 'dead'
-                          ? 'bg-red-500/15 text-red-400'
-                          : 'bg-emerald-500/15 text-emerald-400'
-                      }`}
-                    >
-                      {char.status === 'dead' ? 'Đã chết' : 'Còn sống'}
-                    </span>
-                  </div>
-                );
-              })}
-          </div>
+        <div className="flex-1 h-full relative">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            minZoom={0.2}
+            maxZoom={2}
+            className="bg-canvas"
+          >
+            <Background color="var(--border-color)" gap={20} size={1.5} />
+            <Controls className="!bg-elevated !border-border !fill-primary [&>button]:!bg-elevated [&>button]:!border-border [&>button]:!fill-primary hover:[&>button]:!bg-canvas" />
+            <MiniMap
+              nodeStrokeWidth={3}
+              zoomable
+              pannable
+              className="!bg-panel !border-border !rounded-xl overflow-hidden"
+              nodeColor={(node) =>
+                node.id === 'char_linh_001' ? '#10B981' : '#3B82F6'
+              }
+            />
+          </ReactFlow>
         </div>
 
-        {/* Right Info Drawer for Selected Character */}
+        {/* Right Info Drawer */}
         {selectedEntity && (
           <div
-            className="w-80 h-full border-l p-4 flex flex-col justify-between text-xs select-text overflow-y-auto"
+            className="w-84 h-full border-l p-4 flex flex-col justify-between text-xs select-text overflow-y-auto"
             style={{
               backgroundColor: 'var(--bg-panel)',
               borderColor: 'var(--border-color)',
@@ -154,7 +295,7 @@ export const RelationshipGraph: React.FC = () => {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
-                  Thông Tin Liên Kết
+                  Chi Tiết Thực Thể Đang Chọn
                 </span>
                 <button
                   onClick={() =>
@@ -171,32 +312,35 @@ export const RelationshipGraph: React.FC = () => {
                 </button>
               </div>
 
-              <h2 className="text-base font-bold text-primary">
-                {selectedEntity.title}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-primary">
+                  {selectedEntity.title}
+                </h2>
+                <span
+                  className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                    selectedEntity.status === 'dead'
+                      ? 'bg-red-500/15 text-red-400'
+                      : 'bg-emerald-500/15 text-emerald-400'
+                  }`}
+                >
+                  {selectedEntity.status === 'dead' ? 'Đã tử vong' : 'Còn sống'}
+                </span>
+              </div>
               <div className="text-muted text-[11px] mt-0.5">
                 {selectedEntity.role}
               </div>
 
               <div className="space-y-2 mt-4 text-[11px] text-muted">
                 <div>
-                  <strong className="text-primary">Trạng thái tại Ch.{chapterFilter}:</strong>{' '}
-                  <span
-                    className={
-                      selectedEntity.status === 'dead'
-                        ? 'text-red-400 font-semibold'
-                        : 'text-emerald-400 font-semibold'
-                    }
-                  >
-                    {selectedEntity.status === 'dead' ? 'Đã tử vong' : 'Còn sống'}
-                  </span>
-                </div>
-                <div>
                   <strong className="text-primary">Ngoại hình:</strong>{' '}
                   {selectedEntity.appearance}
                 </div>
                 <div>
-                  <strong className="text-primary">Tổ chức:</strong>{' '}
+                  <strong className="text-primary">Tính cách:</strong>{' '}
+                  {selectedEntity.personality}
+                </div>
+                <div>
+                  <strong className="text-primary">Phe phái:</strong>{' '}
                   {selectedEntity.faction}
                 </div>
               </div>
@@ -204,7 +348,7 @@ export const RelationshipGraph: React.FC = () => {
               {/* Active Relations */}
               <div className="mt-5">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-muted block mb-2">
-                  Các Mối Quan Hệ (Tại Chương {chapterFilter}):
+                  Quan Hệ Tại Mốc Chương {chapterFilter}:
                 </span>
                 <div className="space-y-2">
                   {activeRelations
@@ -248,8 +392,8 @@ export const RelationshipGraph: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-2 rounded bg-elevated/40 text-[10px] text-muted leading-relaxed">
-              Kéo thanh trượt thời gian để quan sát sự thay đổi đồng minh, phản bội và sinh tử qua từng hồi truyện.
+            <div className="p-2.5 rounded-xl bg-elevated/40 border border-border/50 text-[10px] text-muted leading-relaxed">
+              Kéo thanh trượt thời gian để theo dõi diễn biến liên minh, đối đầu và sinh tử qua từng hồi truyện theo chuẩn React Flow.
             </div>
           </div>
         )}

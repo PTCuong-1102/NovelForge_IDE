@@ -1,6 +1,16 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
+import {
+  useEditor,
+  EditorContent,
+  BubbleMenu,
+} from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import Highlight from '@tiptap/extension-highlight';
+import CharacterCount from '@tiptap/extension-character-count';
+import Typography from '@tiptap/extension-typography';
 import {
   Sparkles,
   Check,
@@ -12,6 +22,16 @@ import {
   AlertCircle,
   Lightbulb,
   Plus,
+  Bold,
+  Italic,
+  Strikethrough,
+  Heading2,
+  Heading3,
+  Quote,
+  Eye,
+  Type,
+  Maximize2,
+  Minus,
 } from 'lucide-react';
 import { ChapterDocument, LoreEntity } from '@/lib/tauri-bridge';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
@@ -34,8 +54,12 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   const {
     typewriterScrolling,
     paragraphFocus,
+    toggleTypewriterScrolling,
+    toggleParagraphFocus,
     proseFont,
+    setProseFont,
     proseFontSize,
+    setProseFontSize,
     focusedParagraphIndex,
     setFocusedParagraphIndex,
     openRefactorModal,
@@ -65,13 +89,85 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const words = countVietnameseAndLatinWords(chapter.paragraphs.join(' '));
-  const detectedMentions = scanImplicitEntitiesInChapter(chapter, entities);
-  const issues = runContinuityLinterEngine(chapter, entities, ignoredIssueIds);
-
-  const pendingDiffs = diffProposals.filter(
-    (d) => d.chapter_id === chapter.id && d.status === 'pending'
+  const words = useMemo(
+    () => countVietnameseAndLatinWords(chapter.paragraphs.join(' ')),
+    [chapter.paragraphs]
   );
+  const issues = useMemo(
+    () => runContinuityLinterEngine(chapter, entities, ignoredIssueIds),
+    [chapter, entities, ignoredIssueIds]
+  );
+
+  const pendingDiffs = useMemo(
+    () =>
+      diffProposals.filter(
+        (d) => d.chapter_id === chapter.id && d.status === 'pending'
+      ),
+    [diffProposals, chapter.id]
+  );
+
+  // Initialize TipTap instance
+  const initialContent = useMemo(() => {
+    return chapter.paragraphs
+      .map((p) => {
+        if (p.startsWith('> [!GHI_CHÚ_TÁC_GIẢ]')) {
+          return `<blockquote><p><strong>GHI CHÚ TÁC GIẢ:</strong> ${p.replace(
+            '> [!GHI_CHÚ_TÁC_GIẢ]',
+            ''
+          )}</p></blockquote>`;
+        }
+        if (p.trim() === '***') {
+          return '<hr />';
+        }
+        return `<p>${p}</p>`;
+      })
+      .join('');
+  }, [chapter.id]);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: {
+          levels: [2, 3],
+        },
+      }),
+      Placeholder.configure({
+        placeholder: 'Bắt đầu viết bản thảo hoặc gõ / để mở menu lệnh nhanh...',
+      }),
+      Highlight.configure({
+        multicolor: true,
+      }),
+      CharacterCount,
+      Typography,
+    ],
+    content: initialContent,
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        class:
+          'focus:outline-none min-h-[300px] leading-relaxed text-primary select-text',
+      },
+    },
+    onUpdate: ({ editor }) => {
+      // Sync from TipTap back to chapter paragraphs lossless structure
+      const text = editor.getText();
+      const rawParas = text
+        .split('\n')
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+      if (rawParas.length > 0) {
+        updateChapterParagraphs(chapter.id, rawParas);
+      }
+    },
+  });
+
+  // Keep editor content in sync when chapter changes
+  useEffect(() => {
+    if (editor && editor.getText().length === 0 && chapter.paragraphs.length > 0) {
+      editor.commands.setContent(initialContent);
+    }
+  }, [chapter.id, editor, initialContent]);
 
   const handleParagraphChange = (pIdx: number, newText: string) => {
     const updated = [...chapter.paragraphs];
@@ -134,7 +230,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   return (
     <div
       ref={containerRef}
-      className="relative flex-1 h-full overflow-y-auto px-6 py-8 flex flex-col items-center select-text"
+      className="relative flex-1 h-full overflow-y-auto px-6 py-6 flex flex-col items-center select-text"
       style={{ backgroundColor: 'var(--bg-canvas)' }}
       onClick={() => {
         setHoveredEntity(null);
@@ -142,7 +238,114 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
         if (slashMenuOpen) setSlashMenu(false);
       }}
     >
-      <div className="w-full max-w-[760px] flex flex-col">
+      <div className="w-full max-w-[780px] flex flex-col">
+        {/* Editor Floating Toolbar (Ergonomics) */}
+        <div
+          className="sticky top-0 z-30 mb-6 px-3 py-1.5 rounded-xl border shadow-sm backdrop-blur-md flex items-center justify-between text-xs select-none"
+          style={{
+            backgroundColor: 'var(--bg-panel)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
+          {/* Text Styles */}
+          <div className="flex items-center gap-1 border-r border-border/50 pr-2">
+            <button
+              onClick={() => editor?.chain().focus().toggleBold().run()}
+              className={`p-1.5 rounded hover:bg-elevated transition-colors ${
+                editor?.isActive('bold') ? 'bg-accent/15 text-accent font-bold' : 'text-muted hover:text-primary'
+              }`}
+              title="In đậm (Ctrl+B)"
+            >
+              <Bold size={13} />
+            </button>
+            <button
+              onClick={() => editor?.chain().focus().toggleItalic().run()}
+              className={`p-1.5 rounded hover:bg-elevated transition-colors ${
+                editor?.isActive('italic') ? 'bg-accent/15 text-accent font-bold' : 'text-muted hover:text-primary'
+              }`}
+              title="In nghiêng (Ctrl+I)"
+            >
+              <Italic size={13} />
+            </button>
+            <button
+              onClick={() => editor?.chain().focus().toggleStrike().run()}
+              className={`p-1.5 rounded hover:bg-elevated transition-colors ${
+                editor?.isActive('strike') ? 'bg-accent/15 text-accent font-bold' : 'text-muted hover:text-primary'
+              }`}
+              title="Gạch ngang"
+            >
+              <Strikethrough size={13} />
+            </button>
+            <button
+              onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
+              className={`p-1.5 rounded hover:bg-elevated transition-colors ${
+                editor?.isActive('heading', { level: 2 }) ? 'bg-accent/15 text-accent font-bold' : 'text-muted hover:text-primary'
+              }`}
+              title="Tiêu đề phân đoạn (H2)"
+            >
+              <Heading2 size={13} />
+            </button>
+            <button
+              onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+              className={`p-1.5 rounded hover:bg-elevated transition-colors ${
+                editor?.isActive('blockquote') ? 'bg-accent/15 text-accent font-bold' : 'text-muted hover:text-primary'
+              }`}
+              title="Trích dẫn văn học"
+            >
+              <Quote size={13} />
+            </button>
+          </div>
+
+          {/* Typography & Focus Mode */}
+          <div className="flex items-center gap-2">
+            {/* Font selector */}
+            <div className="flex items-center gap-1 bg-elevated px-1.5 py-0.5 rounded border border-border">
+              <Type size={12} className="text-muted" />
+              <select
+                value={proseFont}
+                onChange={(e) => setProseFont(e.target.value as 'serif' | 'sans' | 'mono')}
+                className="bg-transparent text-[11px] text-primary focus:outline-none cursor-pointer"
+              >
+                <option value="serif">Literata (Serif)</option>
+                <option value="sans">Inter (Sans)</option>
+                <option value="mono">JetBrains Mono</option>
+              </select>
+            </div>
+
+            {/* Font size */}
+            <div className="flex items-center gap-1 text-[11px] text-muted">
+              <button
+                onClick={() => setProseFontSize(Math.max(14, proseFontSize - 1))}
+                className="p-1 hover:bg-elevated rounded"
+                title="Giảm cỡ chữ"
+              >
+                <Minus size={11} />
+              </button>
+              <span className="font-mono text-primary">{proseFontSize}px</span>
+              <button
+                onClick={() => setProseFontSize(Math.min(26, proseFontSize + 1))}
+                className="p-1 hover:bg-elevated rounded"
+                title="Tăng cỡ chữ"
+              >
+                <Plus size={11} />
+              </button>
+            </div>
+
+            {/* Paragraph Focus Toggle */}
+            <button
+              onClick={toggleParagraphFocus}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-colors ${
+                paragraphFocus
+                  ? 'bg-accent/15 border-accent/40 text-accent'
+                  : 'bg-elevated border-border text-muted hover:text-primary'
+              }`}
+              title="Tập trung vào đoạn văn đang soạn thảo"
+            >
+              Paragraph Focus
+            </button>
+          </div>
+        </div>
+
         {/* Chapter Header Properties (Notion Style) */}
         <ChapterHeaderProperties
           chapter={chapter}
@@ -155,7 +358,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
           {chapter.title}
         </h1>
 
-        {/* Prose Paragraphs */}
+        {/* Prose Paragraphs with Dynamic Semantic Underlines & Hover Support */}
         <div className="flex flex-col gap-6 prose-editor-area">
           {chapter.paragraphs.map((para, pIdx) => {
             const isFocused = focusedParagraphIndex === pIdx;
@@ -225,7 +428,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
                     <div className="flex items-center justify-between text-xs">
                       <span className="flex items-center gap-1.5 font-semibold text-emerald-400">
                         <Sparkles size={14} />
-                        Đề xuất từ {diffForThisPara.agent_name}:
+                        Đề xuất chỉnh sửa từ {diffForThisPara.agent_name}:
                       </span>
                       <span className="text-[10px] text-muted">
                         {diffForThisPara.created_at}
@@ -576,7 +779,6 @@ function renderDecoratedParagraph(
   }
 
   // Tokenize text to highlight entities and linter issues
-  const words = text.split(/(\s+|[.,!?:;"'()])/);
   const entityMapByName = new Map<string, LoreEntity>();
   entities.forEach((e) => {
     entityMapByName.set(e.title.toLowerCase(), e);
@@ -585,7 +787,7 @@ function renderDecoratedParagraph(
 
   return (
     <span>
-      {text.split(/(\b(?:Lâm Vũ Linh|Tiểu Linh|Trần Hạo|Hạo Đen|Vũ Đình Khánh|Chỉ huy Khánh|Kiều Hạ My|Bến Cảng Đông|Cảng Đông|Ổ Khóa Lượng Tử Thần Nông|Lõi Thần Nông|lạnh lẽo|tóc dài)\b)/g).map((chunk, i) => {
+      {text.split(/(\b(?:Lâm Vũ Linh|Tiểu Linh|Trần Hạo|Hạo Đen|Vũ Đình Khánh|Chỉ huy Khánh|Kiều Hạ My|Bác sĩ My|Chim Bói Cá|Bến Cảng Đông|Cảng Đông|Tháp Chỉ Huy Aegis|Ổ Khóa Lượng Tử Thần Nông|Lõi Thần Nông|lạnh lẽo|tóc dài)\b)/g).map((chunk, i) => {
         const lower = chunk.toLowerCase();
         const matchedEntity = entityMapByName.get(lower);
 
@@ -615,7 +817,6 @@ function renderDecoratedParagraph(
 
         if (matchedEntity) {
           const isLoc = matchedEntity.entity_type === 'location';
-          const isItem = matchedEntity.entity_type === 'item';
           return (
             <span
               key={i}

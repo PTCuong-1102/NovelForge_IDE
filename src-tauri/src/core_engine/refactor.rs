@@ -16,11 +16,11 @@ pub fn preview_entity_rename(
     chapters: &[(String, String, Vec<String>)], // (chapter_id, chapter_title, paragraphs)
     old_name: &str,
     new_name: &str,
-    alias_Pairs: &[(String, String)],
+    alias_pairs: &[(String, String)],
 ) -> Vec<RefactorPreviewItem> {
     let mut items = Vec::new();
     let mut replacements = vec![(old_name.to_string(), new_name.to_string())];
-    for (old_a, new_a) in alias_Pairs {
+    for (old_a, new_a) in alias_pairs {
         if !old_a.is_empty() && !new_a.is_empty() {
             replacements.push((old_a.clone(), new_a.clone()));
         }

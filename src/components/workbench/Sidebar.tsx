@@ -17,6 +17,7 @@ import {
   Clock,
   Eye,
   RefreshCw,
+  RotateCcw,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useEditorStore } from '@/stores/useEditorStore';
@@ -37,6 +38,8 @@ export const Sidebar: React.FC = () => {
     availableBranches,
     switchBranch,
     createWhatIfBranch,
+    createGitSnapshot,
+    restoreSnapshot,
   } = useWorkspaceStore();
 
   const {
@@ -486,14 +489,28 @@ export const Sidebar: React.FC = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
-            <span className="text-[11px] font-semibold text-muted uppercase">
-              Điểm Nhớ (Git Snapshots):
-            </span>
-            <div className="flex flex-col gap-2 mt-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold text-muted uppercase">
+                Điểm Nhớ (Git Snapshots):
+              </span>
+              <button
+                onClick={() => {
+                  const label = prompt('Nhập tên điểm nhớ cần lưu:');
+                  if (label && label.trim()) {
+                    createGitSnapshot(label.trim());
+                  }
+                }}
+                className="text-[10px] text-accent hover:underline font-semibold"
+              >
+                + Lưu mốc mới
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2 mt-1">
               {snapshots.map((snap) => (
                 <div
                   key={snap.id}
-                  className="p-2.5 bg-elevated/40 border border-border/60 rounded flex flex-col gap-1"
+                  className="p-2.5 bg-elevated/40 hover:bg-elevated/70 border border-border/60 rounded-xl flex flex-col gap-1.5 transition-colors"
                 >
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
                     <GitCommit size={14} className="text-emerald-500 shrink-0" />
@@ -506,6 +523,22 @@ export const Sidebar: React.FC = () => {
                     <span className="text-emerald-400 font-mono">
                       +{snap.word_count_delta} từ
                     </span>
+                  </div>
+                  <div className="pt-1 border-t border-border/40 flex justify-end">
+                    <button
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Bạn có chắc chắn muốn khôi phục toàn bộ bản thảo về điểm nhớ "${snap.label}"?`
+                          )
+                        ) {
+                          restoreSnapshot(snap.id);
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold transition-colors flex items-center gap-1"
+                    >
+                      <RotateCcw size={10} /> Khôi phục mốc này
+                    </button>
                   </div>
                 </div>
               ))}

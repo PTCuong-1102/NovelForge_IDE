@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useWorkspaceStore, OpenWorkbenchTab } from '@/stores/useWorkspaceStore';
 import { TabBar } from './TabBar';
 import { NovelEditor } from '../editor/NovelEditor';
@@ -21,6 +21,10 @@ export const DockLayout: React.FC = () => {
     entities,
   } = useWorkspaceStore();
 
+  const [primaryWidthPercent, setPrimaryWidthPercent] = useState(50);
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const primaryTabs = openTabs.filter(
     (t) => t.pane === 'primary' || !splitView
   );
@@ -33,6 +37,41 @@ export const DockLayout: React.FC = () => {
     secondaryTabs.find((t) => t.id === activeSecondaryTabId) ||
     secondaryTabs[0] ||
     primaryTabs[1];
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const offset = e.clientX - rect.left;
+      const totalWidth = rect.width;
+      const percentage = Math.min(80, Math.max(20, (offset / totalWidth) * 100));
+      setPrimaryWidthPercent(percentage);
+    },
+    [isDragging]
+  );
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    } else {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   const renderTabContent = (tab?: OpenWorkbenchTab) => {
     if (!tab) {
@@ -66,9 +105,19 @@ export const DockLayout: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 h-full flex overflow-hidden">
+    <div
+      ref={containerRef}
+      className={`flex-1 h-full flex overflow-hidden ${
+        isDragging ? 'select-none cursor-col-resize' : ''
+      }`}
+    >
       {/* Primary Pane */}
-      <div className="flex-1 h-full flex flex-col min-w-0 border-r border-border/40">
+      <div
+        className="h-full flex flex-col min-w-0"
+        style={{
+          width: splitView ? `${primaryWidthPercent}%` : '100%',
+        }}
+      >
         <TabBar
           pane="primary"
           tabs={primaryTabs}
@@ -82,9 +131,26 @@ export const DockLayout: React.FC = () => {
         </div>
       </div>
 
+      {/* Resizable Divider Handle */}
+      {splitView && (
+        <div
+          onMouseDown={handleMouseDown}
+          className="w-1.5 h-full hover:bg-emerald-500 cursor-col-resize flex items-center justify-center transition-colors group z-20"
+          style={{ backgroundColor: 'var(--border-color)' }}
+          title="Kéo thả để thay đổi tỉ lệ phân tách màn hình"
+        >
+          <div className="w-0.5 h-8 bg-muted group-hover:bg-white rounded-full transition-colors" />
+        </div>
+      )}
+
       {/* Secondary Split Pane */}
       {splitView && (
-        <div className="flex-1 h-full flex flex-col min-w-0 animate-in slide-in-from-right-4 duration-150">
+        <div
+          className="h-full flex flex-col min-w-0 animate-in slide-in-from-right-4 duration-150"
+          style={{
+            width: `${100 - primaryWidthPercent}%`,
+          }}
+        >
           <TabBar
             pane="secondary"
             tabs={secondaryTabs.length > 0 ? secondaryTabs : [activeSecondaryTab]}

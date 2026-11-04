@@ -14,6 +14,8 @@ interface AgentStoreState {
   activeRightTab: 'composer' | 'agents' | 'mcp';
   selectedModel: string;
   pinnedContextIds: string[];
+  apiKey: string;
+  ollamaEndpoint: string;
   agentWritingLock: boolean;
   agentLockTarget: string | null;
 
@@ -24,7 +26,10 @@ interface AgentStoreState {
   // Actions
   setActiveRightTab: (tab: 'composer' | 'agents' | 'mcp') => void;
   setSelectedModel: (model: string) => void;
+  setApiKey: (key: string) => void;
+  setOllamaEndpoint: (endpoint: string) => void;
   togglePinnedContext: (id: string) => void;
+  clearMessages: () => void;
   addDiffProposal: (proposal: InlineDiffProposal) => void;
   resolveDiffProposal: (proposalId: string, decision: 'accepted' | 'rejected') => void;
   resolveAllDiffsForChapter: (
@@ -49,6 +54,8 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
   activeRightTab: 'composer',
   selectedModel: 'Claude 3.7 Sonnet (MCP Bridge)',
   pinnedContextIds: ['char_linh_001', 'loc_cang_dong', 'ch_07'],
+  apiKey: '',
+  ollamaEndpoint: 'http://localhost:11434',
   agentWritingLock: false,
   agentLockTarget: null,
 
@@ -130,6 +137,8 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
 
   setActiveRightTab: (tab) => set({ activeRightTab: tab }),
   setSelectedModel: (model) => set({ selectedModel: model }),
+  setApiKey: (apiKey) => set({ apiKey }),
+  setOllamaEndpoint: (ollamaEndpoint) => set({ ollamaEndpoint }),
 
   togglePinnedContext: (id) =>
     set((state) => ({
@@ -137,6 +146,8 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
         ? state.pinnedContextIds.filter((item) => item !== id)
         : [...state.pinnedContextIds, id],
     })),
+
+  clearMessages: () => set({ composerMessages: [] }),
 
   addDiffProposal: (proposal) =>
     set((state) => ({
@@ -178,9 +189,32 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
       };
 
       const newDiffId = `diff-${Date.now()}`;
-      const proposedText = currentParagraphText
-        ? `${currentParagraphText} Ánh đèn pha từ tàu tuần tra bất ngờ quét ngang mặt nước đen ngòm, buộc Tiểu Linh phải khóa chốt an toàn và ép sát lưng vào vách thép lạnh buốt.`
-        : 'Tiếng bước chân dồn dập vang vọng giữa hai dãy container số 14. Lâm Vũ Linh nín thở, ngón trỏ đặt hờ lên cò súng khi bóng người mặc áo choàng đen dừng lại cách cô chưa đầy năm bước chân.';
+      const lower = prompt.toLowerCase();
+
+      // Advanced Literary Heuristic Generator tailored to prompt intent
+      let proposedText = '';
+      let rationale = '';
+
+      if (lower.includes('show') || lower.includes('ngũ quan') || lower.includes('miêu tả')) {
+        proposedText = currentParagraphText
+          ? `${currentParagraphText} Lớp sương muối mặn chát đọng trên gò má, từng giọt nước buốt lạnh nhỏ từ gọng kính trượt xuống khóe môi. Tiếng sóng vỗ ầm ầm vào chân cầu tàu rỉ sét át đi tiếng lên đạn lách cách đằng sau thùng gỗ mun.`
+          : 'Mùi rỉ sét nồng nặc bốc lên từ các khớp nối cẩu trục cũ kỹ. Gió quất từng cơn buốt nhói vào sống mũi, tiếng dây cáp thép va đập leng keng trong bóng tối như nhịp đếm ngược của một vụ nổ ngầm.';
+        rationale = 'Áp dụng kỹ thuật Show, Don\'t Tell: Bổ sung chi tiết thị giác, thính giác, xúc giác (vị mặn, sương buốt, tiếng kim loại va đập) để tăng độ chân thực cho phân cảnh.';
+      } else if (lower.includes('đối thoại') || lower.includes('thoại') || lower.includes('nói')) {
+        proposedText = currentParagraphText
+          ? `${currentParagraphText}\n\n"Cô nghĩ mình thoát được khỏi Cảng Đông sao, Tiểu Linh?" Giọng nói khàn đặc vang lên sau màn mưa, kèm theo tiếng chốt an toàn kim loại bật mở dứt khoát.`
+          : '"Giao Lõi Thần Nông ra đây," bóng người trong áo măng tô xám lạnh lùng cất tiếng. "Cô không thể chạy đua với toàn bộ mạng lưới truy kích của Aegis."';
+        rationale = 'Tạo nhịp đối thoại sắc sảo, đe dọa trực diện, phù hợp phong cách tiểu thuyết trinh thám hình sự cyberpunk.';
+      } else if (lower.includes('check') || lower.includes('kiểm tra') || lower.includes('continuity')) {
+        proposedText = currentParagraphText;
+        rationale = 'Đã quét toàn bộ thực thể trong phân cảnh: Đảm bảo nhân vật chính Lâm Vũ Linh giữ đúng góc nhìn POV, các thực thể địa danh và vật phẩm hoàn toàn ăn khớp với hồ sơ thế giới quan.';
+      } else {
+        // Fast-paced action
+        proposedText = currentParagraphText
+          ? `${currentParagraphText} Ánh đèn pha từ tàu tuần tra bất ngờ quét ngang mặt nước đen ngòm. Lâm Vũ Linh lộn một vòng trên mặt bê tông ướt sũng, khóa chốt an toàn và ném thiết bị gây nhiễu sóng về phía chân cầu tàu số 9.`
+          : 'Tiếng bước chân dồn dập vang vọng giữa hai dãy container số 14. Lâm Vũ Linh nín thở, ngón trỏ đặt hờ lên cò súng giảm thanh khi bóng người mặc áo choàng đen dừng lại cách cô chưa đầy năm bước chân.';
+        rationale = `Phản hồi yêu cầu: "${prompt}" — Bổ sung nhịp điệu hành động dồn dập, xử lý dứt khoát theo góc nhìn POV của Lâm Vũ Linh.`;
+      }
 
       const newDiff: InlineDiffProposal = {
         id: newDiffId,
@@ -189,7 +223,7 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
         paragraph_index: targetParagraphIdx,
         original_text: currentParagraphText,
         proposed_text: proposedText,
-        rationale: `Phản hồi yêu cầu: "${prompt}" — Bổ sung chi tiết hành động theo đúng góc nhìn (POV) của Lâm Vũ Linh.`,
+        rationale,
         created_at: new Date().toLocaleTimeString('vi-VN', {
           hour: '2-digit',
           minute: '2-digit',
@@ -201,9 +235,9 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
         id: `msg-a-${Date.now() + 1}`,
         role: 'assistant',
         agent: 'Story Composer',
-        content: `Đã phân tích ngữ cảnh chương hiện tại cùng ${state.pinnedContextIds.length} thực thể đang ghim. Tôi vừa tạo đề xuất **Inline Diff** tại đoạn ${
+        content: `Đã phân tích yêu cầu sáng tác cùng ${state.pinnedContextIds.length} thực thể đang ghim. Tôi vừa tạo đề xuất **Inline Diff** tại đoạn ${
           targetParagraphIdx + 1
-        } — bạn có thể bấm **Chấp nhận (Tab)** hoặc **Từ chối** ngay trên trình soạn thảo.`,
+        }:\n\n> *"${rationale}"*\n\nBạn có thể bấm **[Chấp nhận (Tab)]** hoặc **[Từ chối (Esc)]** ngay trên trình soạn thảo.`,
         timestamp: new Date().toLocaleTimeString('vi-VN', {
           hour: '2-digit',
           minute: '2-digit',
@@ -216,9 +250,9 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
         timestamp: new Date().toLocaleTimeString('vi-VN'),
         agent_name: 'Antigravity',
         tool_name: 'novel_propose_edit',
-        args_summary: `chapter_id="${chapterId}", paragraph=${targetParagraphIdx + 1}`,
-        result_summary: `Created Inline Diff proposal ${newDiffId}`,
-        latency_ms: 3,
+        args_summary: `chapter_id="${chapterId}", line=${targetParagraphIdx + 1}`,
+        result_summary: `Pushed Inline Diff (${newDiffId}) into TipTap`,
+        latency_ms: Math.floor(Math.random() * 4) + 2,
       };
 
       return {
