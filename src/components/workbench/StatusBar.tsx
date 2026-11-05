@@ -17,6 +17,7 @@ import {
   countVietnameseAndLatinWords,
   runContinuityLinterEngine,
 } from '@/lib/tauri-bridge';
+import { isTauri } from '@/lib/ipc';
 
 export const StatusBar: React.FC = () => {
   const {
@@ -27,6 +28,8 @@ export const StatusBar: React.FC = () => {
     chapters,
     entities,
     setActiveActivity,
+    isDemoData,
+    rootPath,
   } = useWorkspaceStore();
 
   const { activeChapterId, ignoredIssueIds, setPublishModalOpen } =
@@ -60,8 +63,24 @@ export const StatusBar: React.FC = () => {
         color: 'var(--text-muted)',
       }}
     >
-      {/* Left items: Git Branch, Save Status, MCP Status */}
-      <div className="flex items-center gap-4">
+      {/* Left items: Workspace Mode, Git Branch, Save Status, Core Status */}
+      <div className="flex items-center gap-3">
+        {isDemoData ? (
+          <span
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 font-semibold"
+            title="Đang chạy ở chế độ Dữ liệu mẫu (Demo) trong trình duyệt"
+          >
+            ● Demo
+          </span>
+        ) : (
+          <span
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold"
+            title={`Thư mục dự án: ${rootPath || 'Cục bộ'}`}
+          >
+            ● Local
+          </span>
+        )}
+
         <button
           onClick={() => setActiveActivity('git')}
           className="flex items-center gap-1.5 text-primary hover:text-accent font-medium cursor-pointer"
@@ -76,9 +95,9 @@ export const StatusBar: React.FC = () => {
           <span>{saveStatus === 'saved' ? 'Đã lưu' : 'Đang lưu...'}</span>
         </div>
 
-        <div className="hidden md:flex items-center gap-1.5 text-primary">
-          <Cpu size={13} className="semantic-info-text" />
-          <span>MCP: 3 Agents Connected</span>
+        <div className="hidden md:flex items-center gap-1.5 text-muted text-[11px]">
+          <Cpu size={12} className="semantic-info-text" />
+          <span>{isTauri() ? 'IPC Native' : 'Web Runtime'}</span>
         </div>
       </div>
 
@@ -116,7 +135,7 @@ export const StatusBar: React.FC = () => {
         <button
           onClick={() => setPublishModalOpen(true)}
           className="flex items-center gap-1 text-primary hover:text-accent font-semibold px-2 py-0.5 rounded-md hover:bg-elevated transition-colors"
-          title="Xuất bản sách điện tử (EPUB, DOCX, PDF)"
+          title="Xuất bản sách điện tử (EPUB 3, DOCX, PDF)"
         >
           <UploadCloud size={13} />
           <span>Xuất bản</span>
