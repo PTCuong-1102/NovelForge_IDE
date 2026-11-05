@@ -8,13 +8,16 @@ import {
   Download,
   X,
   CheckCircle,
-  FileText,
+  AlertCircle,
   Printer,
-  Sparkles,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { countVietnameseAndLatinWords } from '@/lib/tauri-bridge';
+import { compileManuscript } from '@/lib/publish/compile-manuscript';
+import { buildEpub } from '@/lib/publish/epub';
+import { buildDocx } from '@/lib/publish/docx';
+import { escapeHtml } from '@/lib/publish/escape-html';
 
 export const PublishModal: React.FC = () => {
   const { publishModalOpen, setPublishModalOpen } = useEditorStore();
@@ -24,78 +27,56 @@ export const PublishModal: React.FC = () => {
   const [stripAuthorNotes, setStripAuthorNotes] = useState(true);
   const [includeLoreGlossary, setIncludeLoreGlossary] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [exportedFileName, setExportedFileName] = useState<string | null>(null);
 
   if (!publishModalOpen) return null;
 
   const totalWords = chapters.reduce(
-    (acc, c) => acc + countVietnameseAndLatinWords(c.paragraphs.join(' ')),
+    (acc, c) =>
+      acc +
+      countVietnameseAndLatinWords(
+        c.paragraphs && c.paragraphs.length > 0
+          ? c.paragraphs.join(' ')
+          : ''
+      ),
     0
   );
 
   const sortedChapters = [...chapters].sort((a, b) => a.order - b.order);
 
-  // Compiles chapters into clean publication-ready text
-  const compileManuscript = () => {
-    let content = `# ${projectName.toUpperCase()}\n\n`;
-    content += `*Tác giả: NovelForge Author*\n*Tổng số từ: ${totalWords.toLocaleString()} từ*\n*Ngày biên dịch: ${new Date().toLocaleDateString('vi-VN')}*\n\n---\n\n`;
+  const handleExport = async () => {
+    setIsExporting(true);
+    setExportError(null);
+    setExportedFileName(null);
 
-    let currentAct = '';
-    sortedChapters.forEach((ch) => {
-      if (ch.act_title && ch.act_title !== currentAct) {
-        currentAct = ch.act_title;
-        content += `\n# ${currentAct.toUpperCase()}\n\n`;
+    try {
+      if (sortedChapters.length === 0) {
+        throw new Error('EMPTY_MANUSCRIPT');
       }
 
-      content += `## ${ch.title}\n`;
-      content += `*Góc nhìn (POV): ${ch.pov_character_name} | Bối cảnh: ${ch.story_date} | ${ch.location_tag}*\n\n`;
-
-      ch.paragraphs.forEach((para) => {
-        if (stripAuthorNotes && para.startsWith('> [!GHI_CHÚ_TÁC_GIẢ]')) {
-          return;
-        }
-        content += `${para}\n\n`;
+      const compiled = compileManuscript({
+        chapters: sortedChapters,
+        projectName,
+        includeLoreGlossary,
+        stripAuthorNotes,
+        entities
       });
 
-      content += `\n---\n\n`;
-    });
-
-    if (includeLoreGlossary) {
-      content += `# PHỤ LỤC: THẾ GIỚI QUAN & HỒ SƠ NHÂN VẬT\n\n`;
-      const characters = entities.filter((e) => e.entity_type === 'character');
-      const locations = entities.filter((e) => e.entity_type === 'location');
-
-      content += `### 1. Nhân Vật\n`;
-      characters.forEach((char) => {
-        content += `- **${char.title}** (${char.aliases.join(', ') || 'Chính'}): ${
-          char.role || ''
-        } - ${char.summary || char.personality || ''}\n`;
-      });
-
-      content += `\n### 2. Địa Danh & Bối Cảnh\n`;
-      locations.forEach((loc) => {
-        content += `- **${loc.title}**: ${loc.summary || ''}\n`;
-      });
-    }
-
-    return content;
-  };
-
-  const handleExport = () => {
-    setIsExporting(true);
-
-    setTimeout(() => {
-      const compiledText = compileManuscript();
+      const safeBaseName = (projectName || 'tieu-thuyet')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-_]/gi, '')
+        .trim()
+        .replace(/\s+/g, '-') || 'ban-thao';
 
       if (exportFormat === 'pdf') {
-        // Trigger browser print for PDF export
         const printWindow = window.open('', '_blank');
         if (printWindow) {
           printWindow.document.write(`
             <!DOCTYPE html>
-            <html>
+            <html lang="vi">
             <head>
-              <title>${projectName} - Bản In Chuẩn</title>
+              <title>${escapeHtml(projectName)} - Bản In Chuẩn</title>
               <meta charset="utf-8" />
               <style>
                 body {
@@ -106,28 +87,18 @@ export const PublishModal: React.FC = () => {
                   color: #1a1a1a;
                   padding: 20px;
                 }
-                h1 { text-align: center; font-size: 24pt; margin-bottom: 8px; }
-                h2 { margin-top: 40px; page-break-before: always; font-size: 18pt; border-bottom: 1px solid #ccc; padding-bottom: 8px; }
+                h1 { text-align: center; font-size: 24pt; margin-bottom: 8px; font-family: 'Inter', sans-serif; }
+                h2 { margin-top: 40px; page-break-before: always; font-size: 18pt; border-bottom: 1px solid #ccc; padding-bottom: 8px; font-family: 'Inter', sans-serif; }
                 p { text-indent: 1.5em; margin-bottom: 0.8em; font-size: 12pt; text-align: justify; }
                 .meta { text-align: center; font-style: italic; color: #666; margin-bottom: 30px; font-size: 10pt; }
+                hr { border: 0; border-top: 1px dashed #DDD4C3; margin: 30px 0; }
                 @media print {
                   h2 { page-break-before: always; }
                 }
               </style>
             </head>
             <body>
-              ${compiledText
-                .split('\n\n')
-                .map((block) => {
-                  if (block.startsWith('# ')) return `<h1>${block.replace('# ', '')}</h1>`;
-                  if (block.startsWith('## ')) return `<h2>${block.replace('## ', '')}</h2>`;
-                  if (block.startsWith('### ')) return `<h3>${block.replace('### ', '')}</h3>`;
-                  if (block.startsWith('*') && block.endsWith('*'))
-                    return `<div class="meta">${block.replace(/\*/g, '')}</div>`;
-                  if (block.trim() === '---') return '<hr />';
-                  return `<p>${block}</p>`;
-                })
-                .join('')}
+              ${compiled.fullHtml}
             </body>
             </html>
           `);
@@ -135,37 +106,21 @@ export const PublishModal: React.FC = () => {
           printWindow.focus();
           printWindow.print();
         }
-      } else {
-        // Generate downloaded file for EPUB/HTML or DOCX/Markdown
-        const mimeType =
-          exportFormat === 'epub' ? 'text/html;charset=utf-8' : 'text/markdown;charset=utf-8';
-        const fileExt = exportFormat === 'epub' ? 'html' : 'md';
-        const filename = `${projectName.toLowerCase().replace(/\s+/g, '-')}.${fileExt}`;
-
-        let exportPayload = compiledText;
-        if (exportFormat === 'epub') {
-          exportPayload = `<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="utf-8" />
-  <title>${projectName}</title>
-  <style>
-    body { font-family: 'Literata', Georgia, serif; line-height: 1.8; max-width: 68ch; margin: 40px auto; padding: 20px; color: #2C2623; background: #FBF8F1; }
-    h1, h2, h3 { font-family: 'Inter', sans-serif; color: #0F172A; }
-    p { text-indent: 1.5em; margin-bottom: 1em; }
-    hr { border: 0; border-top: 1px dashed #DDD4C3; margin: 30px 0; }
-  </style>
-</head>
-<body>
-  ${compiledText
-    .split('\n\n')
-    .map((b) => `<p>${b}</p>`)
-    .join('\n')}
-</body>
-</html>`;
-        }
-
-        const blob = new Blob([exportPayload], { type: mimeType });
+      } else if (exportFormat === 'epub') {
+        const blob = await buildEpub(compiled);
+        const filename = `${safeBaseName}.epub`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setExportedFileName(filename);
+      } else if (exportFormat === 'docx') {
+        const blob = await buildDocx(compiled);
+        const filename = `${safeBaseName}.docx`;
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -176,9 +131,15 @@ export const PublishModal: React.FC = () => {
         URL.revokeObjectURL(url);
         setExportedFileName(filename);
       }
-
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'EMPTY_MANUSCRIPT') {
+        setExportError('Dự án hiện chưa có chương nào để xuất bản. Vui lòng tạo ít nhất một chương.');
+      } else {
+        setExportError(`Lỗi khi biên dịch tác phẩm: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } finally {
       setIsExporting(false);
-    }, 600);
+    }
   };
 
   return (
@@ -217,7 +178,7 @@ export const PublishModal: React.FC = () => {
         <div className="p-5 space-y-4">
           <div className="p-3.5 rounded-xl bg-elevated/50 border border-border flex items-center justify-between">
             <div>
-              <div className="font-semibold text-primary">{projectName}</div>
+              <div className="font-semibold text-primary">{projectName || 'Chưa đặt tên'}</div>
               <div className="text-[11px] text-muted">
                 {sortedChapters.length} chương hoàn chỉnh đã sẵn sàng biên tập
               </div>
@@ -239,6 +200,7 @@ export const PublishModal: React.FC = () => {
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button
+                type="button"
                 onClick={() => setExportFormat('epub')}
                 className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 font-semibold transition-all ${
                   exportFormat === 'epub'
@@ -247,10 +209,11 @@ export const PublishModal: React.FC = () => {
                 }`}
               >
                 <Book size={18} />
-                <span>EPUB 3 / HTML Reader</span>
+                <span>EPUB 3 Chuẩn</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setExportFormat('docx')}
                 className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 font-semibold transition-all ${
                   exportFormat === 'docx'
@@ -259,10 +222,11 @@ export const PublishModal: React.FC = () => {
                 }`}
               >
                 <FileCheck size={18} />
-                <span>DOCX / Manuscript</span>
+                <span>DOCX (Bản thảo)</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setExportFormat('pdf')}
                 className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 font-semibold transition-all ${
                   exportFormat === 'pdf'
@@ -271,7 +235,7 @@ export const PublishModal: React.FC = () => {
                 }`}
               >
                 <Printer size={18} />
-                <span>PDF Print View</span>
+                <span>PDF (Hộp thoại in)</span>
               </button>
             </div>
           </div>
@@ -299,9 +263,16 @@ export const PublishModal: React.FC = () => {
             </label>
           </div>
 
+          {exportError && (
+            <div className="p-2.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 text-xs flex items-center gap-2 font-medium">
+              <AlertCircle size={14} className="shrink-0" />
+              <span>{exportError}</span>
+            </div>
+          )}
+
           {exportedFileName && (
             <div className="p-2.5 rounded-lg border semantic-success-box text-xs flex items-center gap-2 font-medium">
-              <CheckCircle size={14} />
+              <CheckCircle size={14} className="shrink-0" />
               <span>
                 Đã tải tệp về máy thành công: <strong>{exportedFileName}</strong>
               </span>
@@ -315,12 +286,14 @@ export const PublishModal: React.FC = () => {
           style={{ borderColor: 'var(--border-color)' }}
         >
           <button
+            type="button"
             onClick={() => setPublishModalOpen(false)}
             className="px-3 py-1.5 rounded-lg bg-elevated hover:bg-elevated/80 text-muted hover:text-primary transition-colors font-medium"
           >
             Đóng
           </button>
           <button
+            type="button"
             onClick={handleExport}
             disabled={isExporting}
             className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors flex items-center gap-1.5 shadow-md"
