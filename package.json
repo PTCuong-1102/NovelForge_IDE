@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "verify:utf8": "node scripts/verify-utf8.mjs",
     "test": "node --import tsx --test src/lib/__tests__/*.test.ts",
     "tauri": "tauri"
   },
@@ -23,7 +25,9 @@
     "@xyflow/react": "^12.4.2",
     "clsx": "^2.1.1",
     "dockview": "^4.3.1",
+    "docx": "^9.15.2",
     "js-yaml": "^4.1.0",
+    "jszip": "^3.10.2",
     "lucide-react": "^0.475.0",
     "next": "^15.1.6",
     "react": "^19.0.0",
