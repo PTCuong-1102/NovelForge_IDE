@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b" />
+      <stop offset="50%" stop-color="#312e81" />
+      <stop offset="100%" stop-color="#4338ca" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="page" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#e2e8f0" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <!-- Book base -->
+  <path d="M120 360 C 180 340, 240 350, 256 370 C 272 350, 332 340, 392 360 L 392 180 C 332 160, 272 170, 256 190 C 240 170, 180 160, 120 180 Z" fill="url(#page)" opacity="0.95" />
+  <!-- Spine glow -->
+  <line x1="256" y1="190" x2="256" y2="370" stroke="#cbd5e1" stroke-width="4" />
+  <!-- Quill pen / Forge flame -->
+  <path d="M256 100 C 280 160, 300 210, 280 260 C 270 285, 260 290, 256 310 C 252 290, 242 285, 232 260 C 212 210, 232 160, 256 100 Z" fill="url(#gold)" />
+  <circle cx="256" cy="230" r="8" fill="#ffffff" opacity="0.8" />
+  <line x1="256" y1="230" x2="256" y2="310" stroke="#b45309" stroke-width="3" />
+</svg>
