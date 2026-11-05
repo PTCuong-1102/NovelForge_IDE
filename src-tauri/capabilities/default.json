@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Minimal permissions for NovelForge IDE",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }

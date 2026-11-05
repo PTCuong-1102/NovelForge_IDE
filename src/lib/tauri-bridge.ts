@@ -101,12 +101,13 @@ export interface CharacterRelationEdge {
 
 export interface StorySnapshot {
   id: string;
+  commit_oid?: string;
   branch_name: string;
   label: string;
   timestamp: string;
   word_count_delta: number;
   total_words: number;
-  chapter_snapshots: Record<string, string[]>;
+  chapter_snapshots?: Record<string, string[]>;
 }
 
 export interface RefactorPreviewMatch {

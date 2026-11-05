@@ -21,6 +21,8 @@ import { RefactorRenameModal } from '@/components/modals/RefactorRenameModal';
 import { PublishModal } from '@/components/modals/PublishModal';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useEditorStore } from '@/stores/useEditorStore';
+import { isTauri } from '@/lib/ipc';
+import { FolderOpen, FlaskConical, X } from 'lucide-react';
 
 export default function WorkbenchPage() {
   const {
@@ -36,6 +38,11 @@ export default function WorkbenchPage() {
     toggleSplitView,
     toggleZenMode,
     createGitSnapshot,
+    isProjectLoading,
+    ipcNotice,
+    loadDemoProject,
+    openProjectFromDialog,
+    dismissIpcNotice,
   } = useWorkspaceStore();
 
   const {
@@ -109,6 +116,92 @@ export default function WorkbenchPage() {
     toggleZenMode,
     createGitSnapshot,
   ]);
+
+  // Empty-state welcome screen: shown when no project is open.
+  if (chapters.length === 0) {
+    return (
+      <div
+        className="w-screen h-screen flex flex-col items-center justify-center overflow-hidden text-primary relative"
+        style={{ backgroundColor: 'var(--bg-canvas)' }}
+      >
+        <div className="max-w-[560px] w-full px-6 text-center flex flex-col items-center gap-6">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg"
+            style={{ backgroundColor: 'var(--accent-color)' }}
+          >
+            <Sparkles size={30} className="text-white" />
+          </div>
+
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-primary">
+              NovelForge IDE
+            </h1>
+            <p className="mt-2 text-sm text-muted leading-relaxed">
+              IDE chuyên biệt cho tiểu thuyết gia — linter nhất quán cốt
+              truyện, Lorebook thế giới quan, và quản lý phiên bản cho tác phẩm.
+            </p>
+          </div>
+
+          {ipcNotice && (
+            <div
+              className="w-full flex items-start gap-2 px-3 py-2 rounded-lg border text-xs text-left"
+              style={{
+                backgroundColor: 'var(--semantic-warning-bg)',
+                borderColor: 'var(--semantic-warning-border)',
+                color: 'var(--semantic-warning-text)',
+              }}
+              role="alert"
+            >
+              <span className="flex-1">{ipcNotice}</span>
+              <button
+                onClick={dismissIpcNotice}
+                aria-label="Đóng thông báo"
+                className="shrink-0 opacity-70 hover:opacity-100"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 w-full">
+            {isTauri() && (
+              <button
+                onClick={() => void openProjectFromDialog()}
+                disabled={isProjectLoading}
+                className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm text-white shadow-md transition-opacity disabled:opacity-60"
+                style={{ backgroundColor: 'var(--accent-color)' }}
+              >
+                <FolderOpen size={17} />
+                {isProjectLoading
+                  ? 'Đang mở project...'
+                  : 'Mở thư mục project…'}
+              </button>
+            )}
+            <button
+              onClick={loadDemoProject}
+              className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm border border-border bg-elevated text-primary hover:bg-canvas transition-colors"
+            >
+              <FlaskConical size={17} />
+              Mở project demo (dữ liệu mẫu)
+            </button>
+          </div>
+
+          <div className="text-[11px] text-muted leading-relaxed">
+            <p className="font-semibold text-primary/80">
+              Cấu trúc thư mục project
+            </p>
+            <code className="mt-1 inline-block px-3 py-1.5 rounded-md bg-elevated border border-border font-mono text-[10px]">
+              my-novel/ ├─ manuscript/act-01/*.md └─ lorebook/characters/*.md
+            </code>
+            <p className="mt-2">
+              File Markdown + YAML frontmatter. Thay đổi được lưu thẳng xuống
+              ổ đĩa khi chạy bản desktop — không có dữ liệu nào bị gửi đi đâu.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -263,6 +356,28 @@ export default function WorkbenchPage() {
 
       {/* Bottom Status Bar (Always visible or compact) */}
       {!zenMode && <StatusBar />}
+
+      {/* IPC / persistence notice toast */}
+      {ipcNotice && (
+        <div
+          className="fixed bottom-10 right-4 z-50 max-w-[380px] flex items-start gap-2 px-3 py-2 rounded-lg border text-xs shadow-lg"
+          style={{
+            backgroundColor: 'var(--semantic-warning-bg)',
+            borderColor: 'var(--semantic-warning-border)',
+            color: 'var(--semantic-warning-text)',
+          }}
+          role="alert"
+        >
+          <span className="flex-1">{ipcNotice}</span>
+          <button
+            onClick={dismissIpcNotice}
+            aria-label="Đóng thông báo"
+            className="shrink-0 opacity-70 hover:opacity-100"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Floating Global Modals */}
       <CommandPalette />

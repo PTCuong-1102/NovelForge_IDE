@@ -6,6 +6,7 @@ import {
   LoreEntity,
   StorySnapshot,
   ThemeMode,
+  countVietnameseAndLatinWords,
 } from '@/lib/tauri-bridge';
 import {
   DEMO_CHAPTERS,
@@ -15,6 +16,11 @@ import {
   createDemoWorkspace,
 } from '@/lib/ipc-demo';
 import { isTauri, invokeSafe } from '@/lib/ipc';
+import {
+  loadProject,
+  saveChapterToDisk,
+  saveEntityToDisk,
+} from '@/lib/project-io';
 
 export type LeftActivityView =
   | 'explorer'
@@ -52,6 +58,8 @@ interface WorkspaceState {
   isDemoData: boolean;
   rootPath: string | null;
 
+  isProjectLoading: boolean;
+  ipcNotice: string | null;
   openTabs: OpenWorkbenchTab[];
   activePrimaryTabId: string;
   activeSecondaryTabId: string | null;
@@ -91,6 +99,8 @@ interface WorkspaceState {
   switchBranch: (branchName: string) => void;
   loadDemoProject: () => void;
   closeProject: () => void;
+  openProjectFromDialog: () => Promise<void>;
+  dismissIpcNotice: () => void;
   resetToDefaults: () => void;
   exportProjectJson: () => string;
   importProjectJson: (jsonString: string) => boolean;
@@ -101,10 +111,99 @@ const INITIAL_CHAPTERS = DEMO_CHAPTERS;
 const INITIAL_RELATIONS = DEMO_RELATIONS;
 const INITIAL_SNAPSHOTS = DEMO_SNAPSHOTS;
 
+// --- Disk persistence (debounced; no-op outside Tauri or in demo mode) ---
+const chapterSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const entitySaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+let getStateRef: (() => WorkspaceState) | null = null;
+
+const debounceKey = (
+  map: Map<string, ReturnType<typeof setTimeout>>,
+  key: string,
+  ms: number,
+  fn: () => void
+) => {
+  const prev = map.get(key);
+  if (prev) clearTimeout(prev);
+  map.set(
+    key,
+    setTimeout(() => {
+      map.delete(key);
+      fn();
+    }, ms)
+  );
+};
+
+const persistChapter = (chapterId: string) => {
+  if (!getStateRef) return;
+  const s = getStateRef();
+  if (!isTauri() || s.isDemoData || !s.rootPath) return;
+  debounceKey(chapterSaveTimers, chapterId, 1000, () => {
+    const cur = getStateRef!();
+    const ch = cur.chapters.find((c) => c.id === chapterId);
+    if (!ch || !cur.rootPath) return;
+    useWorkspaceStore.setState({ saveStatus: 'saving' });
+    saveChapterToDisk(cur.rootPath, ch).then((res) => {
+      useWorkspaceStore.setState((prev) => ({
+        saveStatus: res.ok ? 'saved' : 'unsaved',
+        ipcNotice: res.ok
+          ? prev.ipcNotice
+          : prev.ipcNotice ?? `Không lưu được ${ch.file_path}: ${res.error ?? 'unknown error'}`,
+      }));
+    });
+  });
+};
+
+const persistEntity = (entityId: string) => {
+  if (!getStateRef) return;
+  const s = getStateRef();
+  if (!isTauri() || s.isDemoData || !s.rootPath) return;
+  debounceKey(entitySaveTimers, entityId, 1500, () => {
+    const cur = getStateRef!();
+    const entity = cur.entities.find((e) => e.id === entityId);
+    if (!entity || !cur.rootPath) return;
+    saveEntityToDisk(cur.rootPath, entity).then((res) => {
+      if (!res.ok) {
+        useWorkspaceStore.setState((prev) => ({
+          ipcNotice:
+            prev.ipcNotice ??
+            `Không lưu được ${entity.file_path}: ${res.error ?? 'unknown error'}`,
+        }));
+      }
+    });
+  });
+};
+
+const persistAllChapters = () => {
+  if (!getStateRef) return;
+  for (const ch of getStateRef().chapters) persistChapter(ch.id);
+};
+
+const flushChapterSave = (chapterId: string) => {
+  const pending = chapterSaveTimers.get(chapterId);
+  if (pending) {
+    clearTimeout(pending);
+    chapterSaveTimers.delete(chapterId);
+    if (!getStateRef) return;
+    const cur = getStateRef();
+    const ch = cur.chapters.find((c) => c.id === chapterId);
+    if (ch && cur.rootPath && isTauri() && !cur.isDemoData) {
+      saveChapterToDisk(cur.rootPath, ch);
+    }
+  }
+};
+
+const flushAllChapterSaves = () => {
+  if (!getStateRef) return;
+  for (const chapterId of [...chapterSaveTimers.keys()]) flushChapterSave(chapterId);
+};
+
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
-    (set, get) => ({
-      projectName: 'Huyết Cảng 2026',
+    (set, get) => {
+      getStateRef = get;
+      return {
+      projectName: '',
       theme: 'obsidian',
       activeActivity: 'explorer',
       leftSidebarOpen: true,
@@ -112,45 +211,21 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       zenMode: false,
       splitView: false,
       activeBranch: 'main',
-      availableBranches: [
-        'main',
-        'what-if/tran-hao-con-song',
-        'what-if/linh-phan-boi-aegis',
-      ],
+      availableBranches: ['main'],
       saveStatus: 'saved',
-      isDemoData: true,
+      isDemoData: false,
       rootPath: null,
+      isProjectLoading: false,
+      ipcNotice: null,
 
-      openTabs: [
-        {
-          id: 'tab-ch-08',
-          title: 'Ch.08: Đêm Mưa Tại Bến Cảng',
-          type: 'chapter',
-          targetId: 'ch_08',
-          pane: 'primary',
-        },
-        {
-          id: 'tab-char-linh',
-          title: 'Lâm Vũ Linh',
-          type: 'lore-entity',
-          targetId: 'char_linh_001',
-          pane: 'primary',
-        },
-        {
-          id: 'tab-lore-db',
-          title: 'Lorebook Database',
-          type: 'lore-database',
-          targetId: 'lore-all',
-          pane: 'secondary',
-        },
-      ],
-      activePrimaryTabId: 'tab-ch-08',
-      activeSecondaryTabId: 'tab-lore-db',
+      openTabs: [],
+      activePrimaryTabId: '',
+      activeSecondaryTabId: null,
 
-      chapters: INITIAL_CHAPTERS,
-      entities: INITIAL_ENTITIES,
-      relations: INITIAL_RELATIONS,
-      snapshots: INITIAL_SNAPSHOTS,
+      chapters: [],
+      entities: [],
+      relations: [],
+      snapshots: [],
 
       setTheme: (theme) => set({ theme }),
 
@@ -223,90 +298,101 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             : { activePrimaryTabId: tabId }
         ),
 
-      updateChapterParagraphs: (chapterId, paragraphs) =>
+      updateChapterParagraphs: (chapterId, paragraphs) => {
         set((state) => ({
-          saveStatus: 'saved',
+          saveStatus: 'saving',
           chapters: state.chapters.map((ch) =>
             ch.id === chapterId
               ? { ...ch, paragraphs, updated_at: new Date().toISOString() }
               : ch
           ),
-        })),
+        }));
+        persistChapter(chapterId);
+      },
 
-      updateChapterMetadata: (chapterId, patch) =>
+      updateChapterMetadata: (chapterId, patch) => {
         set((state) => ({
-          saveStatus: 'saved',
+          saveStatus: 'saving',
           chapters: state.chapters.map((ch) =>
             ch.id === chapterId
               ? { ...ch, ...patch, updated_at: new Date().toISOString() }
               : ch
           ),
-        })),
+        }));
+        persistChapter(chapterId);
+      },
 
-      updateEntity: (entityId, patch) =>
+      updateEntity: (entityId, patch) => {
         set((state) => ({
           entities: state.entities.map((e) =>
             e.id === entityId
               ? { ...e, ...patch, updated_at: new Date().toISOString() }
               : e
           ),
-        })),
+        }));
+        persistEntity(entityId);
+      },
 
-      createEntity: (entity) =>
+      createEntity: (entity) => {
         set((state) => ({
           entities: [...state.entities, entity],
-        })),
+        }));
+        persistEntity(entity.id);
+      },
 
-      createChapter: (title) =>
-        set((state) => {
-          const nextOrder =
-            state.chapters.reduce((max, c) => Math.max(max, c.order), 0) + 1;
-          const newId = `ch_${String(nextOrder).padStart(2, '0')}`;
-          const newChapter: ChapterDocument = {
-            id: newId,
-            act_id: 'act_01',
-            act_title: 'Hồi 1: Tín Hiệu Từ Đáy Biển',
-            order: nextOrder,
-            title: title || `Chương ${nextOrder}: Phân Cảnh Mới`,
-            file_path: `manuscript/act-01/ch-${String(nextOrder).padStart(2, '0')}.md`,
-            status: 'draft',
-            pov_character_id: 'char_linh_001',
-            pov_character_name: 'Lâm Vũ Linh',
-            story_date: '16/10/2026',
-            story_year: 2026,
-            location_id: 'loc_cang_dong',
-            location_tag: '#Bến_Cảng_Đông',
-            target_words: 3000,
-            is_flashback: false,
-            paragraphs: [
-              'Bắt đầu viết phân cảnh mới tại đây. Gõ / để mở Slash Command hoặc @ để gắn thẻ nhân vật từ Lorebook.',
-            ],
-            updated_at: new Date().toISOString(),
-          };
-          const tabId = `tab-${newId}`;
-          return {
-            chapters: [...state.chapters, newChapter],
-            openTabs: [
-              ...state.openTabs,
-              {
-                id: tabId,
-                title: newChapter.title,
-                type: 'chapter',
-                targetId: newId,
-                pane: 'primary',
-              },
-            ],
-            activePrimaryTabId: tabId,
-          };
-        }),
+      createChapter: (title) => {
+        const state = get();
+        const nextOrder =
+          state.chapters.reduce((max, c) => Math.max(max, c.order), 0) + 1;
+        const newId = `ch_${String(nextOrder).padStart(2, '0')}`;
+        const newChapter: ChapterDocument = {
+          id: newId,
+          act_id: 'act_01',
+          act_title: 'Hồi 1',
+          order: nextOrder,
+          title: title || `Chương ${nextOrder}: Phân Cảnh Mới`,
+          file_path: `manuscript/act-01/ch-${String(nextOrder).padStart(2, '0')}.md`,
+          status: 'draft',
+          pov_character_id: '',
+          pov_character_name: '',
+          story_date: '',
+          story_year: new Date().getFullYear(),
+          location_id: '',
+          location_tag: '',
+          target_words: 3000,
+          is_flashback: false,
+          paragraphs: [
+            'Bắt đầu viết phân cảnh mới tại đây. Gõ / để mở Slash Command.',
+          ],
+          updated_at: new Date().toISOString(),
+        };
+        const tabId = `tab-${newId}`;
+        set({
+          chapters: [...state.chapters, newChapter],
+          openTabs: [
+            ...state.openTabs,
+            {
+              id: tabId,
+              title: newChapter.title,
+              type: 'chapter',
+              targetId: newId,
+              pane: 'primary',
+            },
+          ],
+          activePrimaryTabId: tabId,
+        });
+        persistChapter(newId);
+      },
 
-      reorderChapters: (fromIndex, toIndex) =>
+      reorderChapters: (fromIndex, toIndex) => {
         set((state) => {
           const next = [...state.chapters];
           const [moved] = next.splice(fromIndex, 1);
           next.splice(toIndex, 0, moved);
           return { chapters: next };
-        }),
+        });
+        persistAllChapters();
+      },
 
       applyRefactorRename: (
         entityId,
@@ -314,7 +400,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         newAliases,
         selectedMatchIds,
         aliasMap
-      ) =>
+      ) => {
         set((state) => {
           const targetEntity = state.entities.find((e) => e.id === entityId);
           if (!targetEntity) return state;
@@ -365,41 +451,133 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             entities: updatedEntities,
             openTabs: updatedTabs,
           };
-        }),
+        });
+        persistAllChapters();
+        persistEntity(entityId);
+      },
 
-      createGitSnapshot: (label) =>
+      createGitSnapshot: (label) => {
+        const finalLabel =
+          label ||
+          `Snapshot tự động (${new Date().toLocaleTimeString('vi-VN')})`;
+        const snapshotLabelState = get();
+
+        if (
+          isTauri() &&
+          !snapshotLabelState.isDemoData &&
+          snapshotLabelState.rootPath
+        ) {
+          const projectRoot = snapshotLabelState.rootPath;
+          flushAllChapterSaves();
+          set({ saveStatus: 'saving' });
+          invokeSafe<StorySnapshot>('create_snapshot', {
+            projectRoot,
+            label: finalLabel,
+          }).then((res) => {
+            if (res.ok) {
+              set((prev) => ({
+                snapshots: [res.data, ...prev.snapshots],
+                saveStatus: 'saved',
+                ipcNotice: null,
+              }));
+            } else {
+              set({
+                saveStatus: 'saved',
+                ipcNotice: res.error.includes('NOTHING_TO_COMMIT')
+                  ? null
+                  : `Snapshot thất bại: ${res.error}`,
+              });
+            }
+          });
+          return;
+        }
+
+        // Browser / demo fallback: local in-memory snapshot.
         set((state) => {
           const snapMap: Record<string, string[]> = {};
           state.chapters.forEach((c) => {
             snapMap[c.id] = [...c.paragraphs];
           });
+          const totalWords = state.chapters.reduce(
+            (acc, ch) =>
+              acc + countVietnameseAndLatinWords(ch.paragraphs.join(' ')),
+            0
+          );
+          const prevTotal = state.snapshots[0]?.total_words ?? 0;
           const newSnap: StorySnapshot = {
             id: `snap-${Date.now()}`,
             branch_name: state.activeBranch,
-            label:
-              label ||
-              `Snapshot tự động (${new Date().toLocaleTimeString('vi-VN')})`,
+            label: finalLabel,
             timestamp: new Date().toISOString().slice(0, 16).replace('T', ' '),
-            word_count_delta: 125,
-            total_words: 3545,
+            word_count_delta: totalWords - prevTotal,
+            total_words: totalWords,
             chapter_snapshots: snapMap,
           };
           return {
             snapshots: [newSnap, ...state.snapshots],
             saveStatus: 'saved',
           };
-        }),
+        });
+      },
 
-      restoreSnapshot: (snapshotId) =>
+      restoreSnapshot: (snapshotId) => {
+        const snapshotState = get();
+
+        if (
+          isTauri() &&
+          !snapshotState.isDemoData &&
+          snapshotState.rootPath
+        ) {
+          const projectRoot = snapshotState.rootPath;
+          const snap = snapshotState.snapshots.find((s) => s.id === snapshotId);
+          const confirmed = window.confirm(
+            `Khôi phục snapshot "${snap?.label ?? snapshotId}"?\n\nChỉ manuscript/ và lorebook/ sẽ được ghi đè theo nội dung tại thời điểm snapshot. Các tệp khác không bị ảnh hưởng, và lịch sử git không bị xóa.`
+          );
+          if (!confirmed) return;
+
+          flushAllChapterSaves();
+          set({ saveStatus: 'saving' });
+          invokeSafe('restore_snapshot', {
+            projectRoot,
+            snapshotId,
+            confirm: true,
+          }).then(async (res) => {
+            if (!res.ok) {
+              set({
+                saveStatus: 'unsaved',
+                ipcNotice: `Không khôi phục được: ${res.error}`,
+              });
+              return;
+            }
+            const reload = await loadProject(projectRoot);
+            if (reload.ok) {
+              set({
+                chapters: reload.data.chapters,
+                entities: reload.data.entities,
+                saveStatus: 'saved',
+                ipcNotice: 'Đã khôi phục snapshot (chỉ manuscript/ và lorebook/).',
+              });
+            } else {
+              set({
+                saveStatus: 'unsaved',
+                ipcNotice: `Đã khôi phục nhưng tải lại thất bại: ${reload.error}`,
+              });
+            }
+          });
+          return;
+        }
+
+        // Browser / demo fallback — local in-memory restore.
         set((state) => {
           const targetSnap = state.snapshots.find((s) => s.id === snapshotId);
           if (!targetSnap || !targetSnap.chapter_snapshots) return state;
 
           const restoredChapters = state.chapters.map((ch) => {
-            if (targetSnap.chapter_snapshots[ch.id]) {
+            const savedParagraphs = targetSnap.chapter_snapshots?.[ch.id];
+            if (savedParagraphs) {
               return {
                 ...ch,
-                paragraphs: [...targetSnap.chapter_snapshots[ch.id]],
+                paragraphs: [...savedParagraphs],
                 updated_at: new Date().toISOString(),
               };
             }
@@ -411,7 +589,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             activeBranch: targetSnap.branch_name,
             saveStatus: 'saved',
           };
-        }),
+        });
+      },
 
       createWhatIfBranch: (branchName) =>
         set((state) => {
@@ -428,21 +607,140 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       switchBranch: (branchName) => set({ activeBranch: branchName }),
 
+      dismissIpcNotice: () => set({ ipcNotice: null }),
+
+      openProjectFromDialog: async () => {
+        if (!isTauri()) {
+          set({
+            ipcNotice:
+              'Mở thư mục chỉ hoạt động trong bản desktop. Trong trình duyệt, hãy dùng "Mở project demo".',
+          });
+          return;
+        }
+        set({ isProjectLoading: true, ipcNotice: null });
+        try {
+          const { open } = await import('@tauri-apps/plugin-dialog');
+          const picked = await open({
+            directory: true,
+            title: 'Chọn thư mục project novel',
+          });
+          if (!picked || typeof picked !== 'string') {
+            set({ isProjectLoading: false });
+            return;
+          }
+          const res = await loadProject(picked);
+          if (!res.ok) {
+            set({
+              isProjectLoading: false,
+              ipcNotice: `Không mở được project: ${res.error}`,
+            });
+            return;
+          }
+          const first = res.data.chapters[0];
+          const firstTabId = first ? `tab-${first.id}` : 'tab-lore-db';
+          const openingTabs: OpenWorkbenchTab[] = first
+            ? [
+                {
+                  id: firstTabId,
+                  title: first.title,
+                  type: 'chapter' as const,
+                  targetId: first.id,
+                  pane: 'primary' as const,
+                },
+              ]
+            : [
+                {
+                  id: 'tab-lore-db',
+                  title: 'Lorebook Database',
+                  type: 'lore-database' as const,
+                  targetId: 'lore-all',
+                  pane: 'primary' as const,
+                },
+              ];
+          set({
+            isProjectLoading: false,
+            isDemoData: false,
+            projectName: res.data.projectName,
+            rootPath: picked,
+            chapters: res.data.chapters,
+            entities: res.data.entities,
+            relations: [],
+            snapshots: [],
+            availableBranches: ['main'],
+            activeBranch: 'main',
+            openTabs: openingTabs,
+            activePrimaryTabId: firstTabId,
+            activeSecondaryTabId: null,
+            saveStatus: 'saved',
+            ipcNotice:
+              res.data.chapters.length === 0 && res.data.entities.length === 0
+                ? 'Thư mục này chưa có manuscript/*.md hoặc lorebook/*.md — hãy thêm nội dung rồi mở lại.'
+                : null,
+          });
+          // Best-effort: restore snapshot timeline from git history.
+          const snaps = await invokeSafe<StorySnapshot[]>('list_snapshots', {
+            projectRoot: picked,
+          });
+          if (snaps.ok) {
+            set({ snapshots: snaps.data });
+          }
+        } catch (e) {
+          set({
+            isProjectLoading: false,
+            ipcNotice: `Không mở được project: ${e instanceof Error ? e.message : String(e)}`,
+          });
+        }
+      },
+
       loadDemoProject: () => {
         const demo = createDemoWorkspace();
         set({
+          isProjectLoading: false,
           isDemoData: true,
           projectName: demo.projectName,
           chapters: demo.chapters,
           entities: demo.entities,
           relations: demo.relations,
           snapshots: demo.snapshots,
+          availableBranches: [
+            'main',
+            'what-if/tran-hao-con-song',
+            'what-if/linh-phan-boi-aegis',
+          ],
+          activeBranch: 'main',
           rootPath: null,
+          openTabs: [
+            {
+              id: 'tab-ch-08',
+              title: 'Ch.08: Đêm Mưa Tại Bến Cảng',
+              type: 'chapter',
+              targetId: 'ch_08',
+              pane: 'primary',
+            },
+            {
+              id: 'tab-char-linh',
+              title: 'Lâm Vũ Linh',
+              type: 'lore-entity',
+              targetId: 'char_linh_001',
+              pane: 'primary',
+            },
+            {
+              id: 'tab-lore-db',
+              title: 'Lorebook Database',
+              type: 'lore-database',
+              targetId: 'lore-all',
+              pane: 'secondary',
+            },
+          ],
+          activePrimaryTabId: 'tab-ch-08',
+          activeSecondaryTabId: 'tab-lore-db',
+          ipcNotice: null,
         });
       },
 
       closeProject: () => {
         set({
+          isProjectLoading: false,
           isDemoData: false,
           projectName: "",
           chapters: [],
@@ -450,7 +748,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           relations: [],
           snapshots: [],
           openTabs: [],
+          activePrimaryTabId: '',
+          activeSecondaryTabId: null,
           rootPath: null,
+          ipcNotice: null,
         });
       },
 
@@ -489,6 +790,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               relations: parsed.relations || INITIAL_RELATIONS,
               snapshots: parsed.snapshots || INITIAL_SNAPSHOTS,
               projectName: parsed.projectName || 'Dự án nhập từ tệp',
+              isDemoData: true,
+              rootPath: null,
             });
             return true;
           }
@@ -497,9 +800,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           return false;
         }
       },
-    }),
+      };
+    },
     {
       name: 'novelforge-workspace-storage',
+      version: 2,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         projectName: state.projectName,
@@ -510,6 +815,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         snapshots: state.snapshots,
         activeBranch: state.activeBranch,
         availableBranches: state.availableBranches,
+        isDemoData: state.isDemoData,
+        rootPath: state.rootPath,
+        openTabs: state.openTabs,
+        activePrimaryTabId: state.activePrimaryTabId,
+        activeSecondaryTabId: state.activeSecondaryTabId,
       }),
     }
   )

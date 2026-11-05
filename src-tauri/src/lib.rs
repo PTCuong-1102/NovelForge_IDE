@@ -8,6 +8,7 @@ use commands::{ai_cmd, fs_cmd, linter_cmd, lore_cmd};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::init_project_workspace,
             fs_cmd::sync_project_sqlite,

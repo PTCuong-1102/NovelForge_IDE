@@ -26,14 +26,21 @@ export async function invokeSafe<T>(
     const data = await invoke<T>(cmd, args);
     return { ok: true, data };
   } catch (err: unknown) {
+    // Rust errors: FsError/GitError serialize as { kind, message }.
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'message' in err &&
+      typeof (err as { message?: unknown }).message === 'string'
+    ) {
+      const e = err as { kind?: string; message: string };
+      return {
+        ok: false,
+        error: e.kind ? `[${e.kind}] ${e.message}` : e.message,
+      };
+    }
     const message =
-      err instanceof Error
-        ? err.message
-        : typeof err === 'string'
-        ? err
-        : typeof err === 'object' && err !== null && 'message' in err
-        ? String((err as { message: unknown }).message)
-        : JSON.stringify(err);
+      err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
     return { ok: false, error: message };
   }
 }

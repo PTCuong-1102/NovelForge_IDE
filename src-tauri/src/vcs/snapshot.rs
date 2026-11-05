@@ -70,7 +70,7 @@ fn open_repo(project_root: &str) -> Result<Repository, GitError> {
 
 /// Find the most recent snapshot commit reachable from HEAD.
 /// Returns (commit, parsed total_words).
-fn latest_snapshot(repo: &Repository) -> Option<(git2::Commit, Option<usize>)> {
+fn latest_snapshot(repo: &Repository) -> Option<(git2::Commit<'_>, Option<usize>)> {
     let head_oid = repo.head().ok()?.target()?;
     let mut revwalk = repo.revwalk().ok()?;
     revwalk.push(head_oid).ok()?;

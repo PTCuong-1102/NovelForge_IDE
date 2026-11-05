@@ -1,6 +1,5 @@
 import type { ChapterDocument, LoreEntity, EntityType } from './tauri-bridge';
 import { isTauri, invokeSafe } from './ipc';
-import { serializeMarkdownWithFrontmatter } from './tauri-bridge';
 
 export interface FileTreeNode {
   name: string;
