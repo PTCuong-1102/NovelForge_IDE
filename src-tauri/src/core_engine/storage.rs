@@ -364,3 +364,44 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_bridge::rag_engine::hybrid_search_lore_sqlite;
+    use std::fs;
+
+    #[test]
+    fn sync_then_hybrid_search_finds_seeded_lore() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let man = root.join("manuscript").join("act-01");
+        let chars = root.join("lorebook").join("characters");
+        fs::create_dir_all(&man).unwrap();
+        fs::create_dir_all(&chars).unwrap();
+
+        fs::write(
+            chars.join("lam-vu-linh.md"),
+            "---\nid: \"char_linh_001\"\ntype: \"character\"\ntitle: \"Lâm Vũ Linh\"\naliases: [\"Tiểu Linh\", \"Đặc vụ số 7\"]\nstatus: \"alive\"\n---\n\n# Hồ sơ\n\nCựu đặc vụ Aegis, chuyên giải mã tín hiệu lượng tử tại Bến Cảng Đông. Mưa axit không làm cô chùn bước.\n",
+        )
+        .unwrap();
+        fs::write(
+            man.join("ch-01.md"),
+            "---\nid: \"ch_01\"\nact_id: \"act_01\"\norder: 1\ntitle: \"Mở đầu\"\nstatus: \"draft\"\nstory_date: \"02/10/2026\"\n---\n\nLâm Vũ Linh đứng giữa cơn mưa axit ở Bến Cảng Đông, tay siết chặt chiếc vali dữ liệu.\n",
+        )
+        .unwrap();
+
+        let summary = sync_workspace_to_sqlite(root).unwrap();
+        assert_eq!(summary.entities_indexed, 1, "one lore entity indexed");
+        assert_eq!(summary.chapters_indexed, 1, "one chapter indexed");
+        assert_eq!(summary.rag_chunks_indexed, 1, "one lore chunk indexed");
+
+        let db = root.join(".novelforge").join("index.sqlite");
+        let conn = init_sqlite_db(&db).unwrap();
+        let hits = hybrid_search_lore_sqlite(&conn, "Lâm Vũ Linh", None, 5).unwrap();
+        assert!(
+            hits.iter().any(|h| h.entity_id == "char_linh_001"),
+            "hybrid search must surface the seeded character, got: {hits:?}"
+        );
+    }
+}
+

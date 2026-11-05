@@ -1,7 +1,5 @@
 use crate::ai_bridge::mcp_server::{list_novelforge_mcp_tools, McpToolCallResult, McpToolSpec};
-use crate::ai_bridge::rag_engine::{
-    hybrid_search_lore_sqlite, upsert_rag_chunk, RagSearchResult,
-};
+use crate::ai_bridge::rag_engine::{hybrid_search_lore_sqlite, RagSearchResult};
 use crate::core_engine::indexer::init_sqlite_db;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -20,6 +18,7 @@ pub struct InlineDiffProposal {
 
 #[tauri::command]
 pub async fn mcp_execute_tool(
+    project_root: Option<String>,
     tool_name: String,
     arguments: Value,
 ) -> Result<McpToolCallResult, String> {
@@ -28,18 +27,28 @@ pub async fn mcp_execute_tool(
         return Err(format!("Unknown MCP tool: {}", tool_name));
     }
 
+    let root = match project_root {
+        Some(r) if !r.trim().is_empty() => std::path::PathBuf::from(r),
+        _ => std::env::current_dir().map_err(|e| e.to_string())?,
+    };
+
+    let payload = crate::ai_bridge::mcp_stdio::call_tool(&root, &tool_name, &arguments);
+    let status = if payload.get("error").is_some() {
+        "error"
+    } else {
+        "ok"
+    };
+
     Ok(McpToolCallResult {
         tool_name,
-        status: "ok".to_string(),
-        payload: json!({
-            "executed_at": chrono::Utc::now().to_rfc3339(),
-            "arguments": arguments,
-        }),
+        status: status.to_string(),
+        payload,
     })
 }
 
 #[tauri::command]
 pub async fn propose_inline_diff(
+    project_root: Option<String>,
     agent_name: String,
     chapter_id: String,
     paragraph_index: usize,
@@ -47,7 +56,7 @@ pub async fn propose_inline_diff(
     proposed_text: String,
     rationale: String,
 ) -> Result<InlineDiffProposal, String> {
-    Ok(InlineDiffProposal {
+    let proposal = InlineDiffProposal {
         id: format!("diff-{}", chrono::Utc::now().timestamp_millis()),
         agent_name,
         chapter_id,
@@ -55,7 +64,29 @@ pub async fn propose_inline_diff(
         original_text,
         proposed_text,
         rationale,
-    })
+    };
+
+    // Persist the proposal so it survives restarts and can be reviewed later.
+    if let Some(root) = project_root {
+        let dir = Path::new(&root).join(".novelforge").join("proposals");
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
+        let path = dir.join(format!("{}.json", proposal.id));
+        let body = json!({
+            "id": proposal.id,
+            "agent_name": proposal.agent_name,
+            "chapter_id": proposal.chapter_id,
+            "paragraph_index": proposal.paragraph_index,
+            "original_text": proposal.original_text,
+            "proposed_text": proposal.proposed_text,
+            "rationale": proposal.rationale,
+            "created_at": chrono::Utc::now().to_rfc3339(),
+            "status": "proposed",
+        });
+        std::fs::write(&path, body.to_string()).map_err(|e| e.to_string())?;
+    }
+
+    Ok(proposal)
 }
 
 #[tauri::command]
@@ -64,55 +95,12 @@ pub async fn search_lore_rag(
     query: String,
     entity_type: Option<String>,
 ) -> Result<Vec<RagSearchResult>, String> {
-    if let Some(root) = project_root {
-        let db_path = Path::new(&root).join(".novelforge").join("index.sqlite");
-        if let Ok(conn) = init_sqlite_db(&db_path) {
-            if let Ok(results) =
-                hybrid_search_lore_sqlite(&conn, &query, entity_type.as_deref(), 8)
-            {
-                if !results.is_empty() {
-                    return Ok(results);
-                }
-            }
-        }
-    }
-
-    // Fallback in-memory SQLite + sqlite-vec hybrid evaluation when no project_root is open on disk
-    let mem_conn = rusqlite::Connection::open_in_memory().map_err(|e| e.to_string())?;
-    mem_conn
-        .execute_batch(
-            "CREATE TABLE IF NOT EXISTS lore_embeddings_store (
-                chunk_id TEXT PRIMARY KEY,
-                entity_id TEXT NOT NULL,
-                title TEXT NOT NULL DEFAULT '',
-                entity_type TEXT NOT NULL DEFAULT 'character',
-                chunk_text TEXT NOT NULL,
-                embedding_blob BLOB NOT NULL,
-                embedding_dim INTEGER NOT NULL DEFAULT 768,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let _ = upsert_rag_chunk(
-        &mem_conn,
-        "chunk_linh_01",
-        "char_linh_001",
-        "Lâm Vũ Linh",
-        "character",
-        "Đặc vụ số 7 của Cục An ninh Mạng, mái tóc ngắn ngang vai, cổ tay gắn bộ giải mã cơ khí sinh học.",
-        None,
-    );
-    let _ = upsert_rag_chunk(
-        &mem_conn,
-        "chunk_port_01",
-        "loc_east_port",
-        "Bến Cảng Đông",
-        "location",
-        "Khu cảng công nghiệp bỏ hoang ngập trong mưa axit, nơi cất giấu Ổ Khóa Lượng Tử Thần Nông.",
-        None,
-    );
-
-    hybrid_search_lore_sqlite(&mem_conn, &query, entity_type.as_deref(), 5)
+    // No silent fake data: a project (or the MCP stdio bridge) is required.
+    let root = project_root.ok_or_else(|| {
+        "search_lore_rag requires a project_root. Open a project in the desktop app, or use the stdio MCP bridge: `novelforge-ide mcp [project_root]`.".to_string()
+    })?;
+    let db_path = Path::new(&root).join(".novelforge").join("index.sqlite");
+    let conn = init_sqlite_db(&db_path).map_err(|e| e.to_string())?;
+    hybrid_search_lore_sqlite(&conn, &query, entity_type.as_deref(), 8)
         .map_err(|e| e.to_string())
 }

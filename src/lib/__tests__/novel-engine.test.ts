@@ -225,25 +225,42 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
     assert.notStrictEqual(ghost0, ghost1, 'Cycling variantIndex should return distinct suggestion');
   });
 
-  it('11. Rust Tauri Backend Core modules (storage, parser, indexer, linter, rag_engine) are present and complete', () => {
-    const rootDir = process.cwd();
-    const requiredRustFiles = [
-      'src-tauri/src/core_engine/storage.rs',
-      'src-tauri/src/core_engine/parser.rs',
-      'src-tauri/src/core_engine/indexer.rs',
-      'src-tauri/src/core_engine/linter.rs',
-      'src-tauri/src/ai_bridge/rag_engine.rs',
-    ];
-    for (const rel of requiredRustFiles) {
-      const fullPath = path.join(rootDir, rel);
-      assert(fs.existsSync(fullPath), `Missing Rust core module: ${rel}`);
-    }
+  it('11. Real manuscript files round-trip through the parser losslessly', () => {
+    const manuscriptDir = path.join(process.cwd(), 'manuscript', 'act-01');
+    const files = fs
+      .readdirSync(manuscriptDir)
+      .filter((f) => f.endsWith('.md'));
+    assert(files.length > 0, 'expected at least one manuscript chapter');
 
-    const indexerContent = fs.readFileSync(
-      path.join(rootDir, 'src-tauri/src/core_engine/indexer.rs'),
-      'utf8'
-    );
-    assert(indexerContent.includes('USING vec0('));
-    assert(indexerContent.includes('FLOAT[768]'));
+    for (const file of files) {
+      const raw = fs.readFileSync(path.join(manuscriptDir, file), 'utf8');
+      const parsed = parseMarkdownWithFrontmatter(raw);
+
+      // Frontmatter must carry the chapter identity declared in the repo data.
+      assert(parsed.frontmatter.id, `missing id in ${file}`);
+      assert(parsed.frontmatter.title, `missing title in ${file}`);
+
+      // Body must contain readable Vietnamese prose.
+      const words = countVietnameseAndLatinWords(parsed.body);
+      assert(words > 20, `suspiciously low word count (${words}) in ${file}`);
+
+      // Round-trip: serialize (paragraphs) then parse again — content must survive.
+      const reparsed = parseMarkdownWithFrontmatter(
+        serializeMarkdownWithFrontmatter(
+          parsed.frontmatter as Record<string, unknown>,
+          parsed.paragraphs
+        )
+      );
+      assert.deepStrictEqual(
+        reparsed.frontmatter,
+        parsed.frontmatter,
+        `frontmatter drifted for ${file}`
+      );
+      assert.deepStrictEqual(
+        reparsed.paragraphs.map((p) => p.trim()),
+        parsed.paragraphs.map((p) => p.trim()),
+        `paragraphs drifted for ${file}`
+      );
+    }
   });
 });

@@ -50,14 +50,15 @@ pub async fn upsert_entity(project_root: String, record: LoreEntityRecord) -> Re
 pub async fn find_entity_usages(
     chapters: Vec<(String, String, Vec<String>)>,
     entity_name: String,
+    new_name: String,
     aliases: Vec<String>,
 ) -> Result<Vec<RefactorPreviewItem>, String> {
     let alias_pairs: Vec<(String, String)> =
-        aliases.into_iter().map(|a| (a.clone(), a)).collect();
+        aliases.into_iter().map(|a| (a, new_name.clone())).collect();
     Ok(preview_entity_rename(
         &chapters,
         &entity_name,
-        &entity_name,
+        &new_name,
         &alias_pairs,
     ))
 }

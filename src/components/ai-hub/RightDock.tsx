@@ -13,6 +13,7 @@ import {
 import { useAgentStore } from '@/stores/useAgentStore';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useEditorStore } from '@/stores/useEditorStore';
+import { isTauri, invokeSafe } from '@/lib/ipc';
 
 export const RightDock: React.FC = () => {
   const {
@@ -28,7 +29,7 @@ export const RightDock: React.FC = () => {
     triggerMcpToolSimulation,
   } = useAgentStore();
 
-  const { chapters, entities } = useWorkspaceStore();
+  const { chapters, entities, rootPath, isDemoData } = useWorkspaceStore();
   const { activeChapterId, focusedParagraphIndex } = useEditorStore();
 
   const [promptInput, setPromptInput] = useState('');
@@ -37,6 +38,45 @@ export const RightDock: React.FC = () => {
     chapters.find((c) => c.id === activeChapterId) || chapters[0];
   const currentParagraphText =
     currentChapter?.paragraphs[focusedParagraphIndex] || '';
+
+  // MCP tools run for real over IPC only when a disk-backed project is open
+  // in the desktop build; otherwise buttons log clearly-labelled simulations.
+  const canRunRealMcp = isTauri() && !!rootPath && !isDemoData;
+
+  const handleToolRun = async (
+    toolName:
+      | 'novel_search_lore'
+      | 'novel_get_chapter_context'
+      | 'novel_check_continuity'
+      | 'novel_propose_edit',
+    args: Record<string, unknown>,
+    callSummary: string
+  ) => {
+    if (canRunRealMcp && rootPath) {
+      const res = await invokeSafe<{ status: string; payload?: unknown }>(
+        'mcp_execute_tool',
+        { projectRoot: rootPath, toolName, arguments: args }
+      );
+      const payloadText = res.ok
+        ? `status=${res.data.status} · ${JSON.stringify(
+            res.data.payload ?? null
+          )}`
+        : `ERROR · ${res.error}`;
+      triggerMcpToolSimulation(
+        toolName,
+        'NovelForge MCP (local)',
+        callSummary,
+        payloadText.slice(0, 300)
+      );
+      return;
+    }
+    triggerMcpToolSimulation(
+      toolName,
+      'Cline',
+      `[SIMULATED — không phải MCP thật] ${callSummary}`,
+      'SIMULATED — không phải kết quả MCP thật'
+    );
+  };
 
   const handleSendPrompt = (text?: string) => {
     const toSend = text || promptInput;
@@ -273,71 +313,51 @@ export const RightDock: React.FC = () => {
                 <Terminal size={14} className="semantic-info-text" />
                 External Agent Subprocesses
               </span>
-              <span className="text-[11px] px-2 py-0.5 rounded-full border semantic-success-box font-semibold">
-                Bridge Active
+              <span className="text-[11px] px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold">
+                Chưa kích hoạt
               </span>
             </div>
             <p className="text-xs text-muted leading-relaxed">
-              Tauri Sidecar giám sát các tác nhân AI chạy nền (Cline CLI,
-              OpenCode, Antigravity) và bẫy sự kiện ghi đè file với crate{' '}
-              <code className="font-mono font-bold text-primary">notify</code>.
+              NovelForge chưa tích hợp sidecar subsystem để spawn agent CLI từ
+              bên trong IDE. Không có tiến trình nào đang chạy nền ở đây.
+              Agent bên ngoài kết nối qua stdio MCP bridge:{' '}
+              <code className="font-mono font-bold text-primary">
+                novelforge-ide mcp [project_root]
+              </code>
             </p>
           </div>
 
-          {/* Running Agents Cards */}
-          <div className="space-y-2">
-            <div className="p-2.5 rounded-xl bg-elevated border border-border flex items-center justify-between">
-              <div>
-                <div className="font-bold text-primary">Cline (MCP Client)</div>
-                <div className="text-[11px] text-muted">
-                  Đang theo dõi Lorebook SQLite
-                </div>
-              </div>
-              <span className="text-[11px] semantic-success-text font-mono font-bold">
-                PID: 49201
-              </span>
+          {/* How to connect an external agent today */}
+          <div className="p-3 rounded-xl border border-border bg-elevated space-y-2">
+            <div className="text-xs font-semibold text-primary">
+              Kết nối agent bên ngoài hôm nay
             </div>
-
-            <div className="p-2.5 rounded-xl bg-elevated border border-border flex items-center justify-between">
-              <div>
-                <div className="font-bold text-primary">OpenCode Sidecar</div>
-                <div className="text-[11px] text-muted">
-                  Đang chờ lệnh Refactor
-                </div>
-              </div>
-              <span className="text-[11px] semantic-success-text font-mono font-bold">
-                PID: 49280
-              </span>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-elevated border border-border flex items-center justify-between">
-              <div>
-                <div className="font-bold text-primary">
-                  Antigravity Orchestrator
-                </div>
-                <div className="text-[11px] text-muted">
-                  Harness điều phối đa tác nhân
-                </div>
-              </div>
-              <span className="text-[11px] semantic-info-text font-mono font-bold">
-                Connected
-              </span>
-            </div>
+            <ol className="text-[11px] text-muted leading-relaxed list-decimal pl-4 space-y-1">
+              <li>Mở thư mục project trong bản desktop.</li>
+              <li>
+                Chạy{' '}
+                <code className="font-mono text-primary">
+                  novelforge-ide mcp .
+                </code>{' '}
+                như stdio MCP server (cwd = project root).
+              </li>
+              <li>
+                Cấu hình Claude Desktop / Cline / OpenCode trỏ tới binary
+                đó — 4 tool: novel_search_lore, novel_get_chapter_context,
+                novel_check_continuity, novel_propose_edit.
+              </li>
+            </ol>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 bg-canvas rounded-xl border border-border font-mono text-[11px] text-primary space-y-1.5">
-            <div className="semantic-success-text font-semibold">
-              &gt; [MCP] stdio transport initialized on /dev/pts/2
+          <div className="flex-1 overflow-y-auto p-3 bg-canvas rounded-xl border border-border font-mono text-[10px] text-muted leading-relaxed">
+            <div className="text-primary font-semibold">
+              # ví dụ cấu hình Claude Desktop
             </div>
-            <div className="semantic-info-text font-semibold">
-              &gt; [notify] watching /home/ptcuong/Projects/NovelForge_IDE/manuscript
-            </div>
-            <div>&gt; [Cline] query: novel_check_continuity(ch_08)</div>
-            <div className="semantic-warning-text font-semibold">
-              &gt; [Linter] Warning: Dead character &quot;Trần Hạo&quot; detected
-            </div>
-            <div>
-              &gt; [OpenCode] file lock released on ch-08-dem-mua-ben-cang.md
+            <div>{'{ "novelforge": { "command": "novelforge-ide",'}</div>
+            <div>{'  "args": ["mcp", "D:/Project/MyNovel"] } }'}</div>
+            <div className="mt-2">
+              # novel_propose_edit KHÔNG ghi đè file — lưu đề xuất tại
+              .novelforge/proposals/*.json để bạn duyệt.
             </div>
           </div>
         </div>
@@ -356,6 +376,18 @@ export const RightDock: React.FC = () => {
                 v1.0.0 Standard
               </span>
             </div>
+            <div
+              className={`text-[10px] leading-snug px-2.5 py-1.5 rounded-lg border ${
+                canRunRealMcp
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+              }`}
+              role="status"
+            >
+              {canRunRealMcp
+                ? 'Đang kết nối MCP server cục bộ qua IPC (project thật trên đĩa).'
+                : 'Chế độ mô phỏng (SIM) — mở thư mục project trong bản desktop để gọi MCP thật qua IPC, hoặc dùng: novelforge-ide mcp [project_root].'}
+            </div>
             <p className="text-xs text-muted leading-relaxed">
               Cung cấp 4 công cụ chuẩn hóa cho Cline, Claude Desktop, Antigravity
               và OpenCode truy vấn trực tiếp vào bộ nhớ tiểu thuyết.
@@ -371,16 +403,15 @@ export const RightDock: React.FC = () => {
                 </code>
                 <button
                   onClick={() =>
-                    triggerMcpToolSimulation(
+                    handleToolRun(
                       'novel_search_lore',
-                      'Cline',
-                      'query="Kiều Hạ My", entity_type="character"',
-                      'Returned 1 entity (BM25 + sqlite-vec score 0.98)'
+                      { query: 'Kiều Hạ My', entity_type: 'character' },
+                      'query="Kiều Hạ My", entity_type="character"'
                     )
                   }
                   className="px-2 py-0.5 border semantic-success-box rounded-md text-[11px] font-semibold flex items-center gap-1"
                 >
-                  <Play size={10} /> Chạy thử
+                  <Play size={10} /> {canRunRealMcp ? 'Chạy MCP thật' : 'Mô phỏng'}
                 </button>
               </div>
               <p className="text-[11px] text-muted">
@@ -396,16 +427,18 @@ export const RightDock: React.FC = () => {
                 </code>
                 <button
                   onClick={() =>
-                    triggerMcpToolSimulation(
+                    handleToolRun(
                       'novel_get_chapter_context',
-                      'OpenCode',
-                      'chapter_id="ch_08", window_size=1',
-                      'Returned Ch.08 + summaries of Ch.07'
+                      {
+                        chapter_id: currentChapter?.id ?? 'ch_08',
+                        window_size: 1,
+                      },
+                      `chapter_id="${currentChapter?.id ?? 'ch_08'}", window_size=1`
                     )
                   }
                   className="px-2 py-0.5 border semantic-success-box rounded-md text-[11px] font-semibold flex items-center gap-1"
                 >
-                  <Play size={10} /> Chạy thử
+                  <Play size={10} /> {canRunRealMcp ? 'Chạy MCP thật' : 'Mô phỏng'}
                 </button>
               </div>
               <p className="text-[11px] text-muted">
@@ -420,16 +453,20 @@ export const RightDock: React.FC = () => {
                 </code>
                 <button
                   onClick={() =>
-                    triggerMcpToolSimulation(
+                    handleToolRun(
                       'novel_check_continuity',
-                      'Antigravity',
-                      'draft_text="...Lâm Vũ Linh...", chapter_id="ch_08"',
-                      '0 Errors, 1 Warning (Repetition)'
+                      {
+                        draft_text:
+                          currentChapter?.paragraphs.join('\n\n') ??
+                          'Lâm Vũ Linh đứng giữa cơn mưa axit ở Bến Cảng Đông.',
+                        chapter_id: currentChapter?.id ?? 'ch_08',
+                      },
+                      `chapter_id="${currentChapter?.id ?? 'ch_08'}", draft_text=<${currentChapter?.paragraphs.length ?? 0} đoạn>`
                     )
                   }
                   className="px-2 py-0.5 border semantic-success-box rounded-md text-[11px] font-semibold flex items-center gap-1"
                 >
-                  <Play size={10} /> Chạy thử
+                  <Play size={10} /> {canRunRealMcp ? 'Chạy MCP thật' : 'Mô phỏng'}
                 </button>
               </div>
               <p className="text-[11px] text-muted">
@@ -445,16 +482,23 @@ export const RightDock: React.FC = () => {
                 </code>
                 <button
                   onClick={() =>
-                    triggerMcpToolSimulation(
+                    handleToolRun(
                       'novel_propose_edit',
-                      'Antigravity',
-                      'file_path="manuscript/act-01/ch-08.md", line=4',
-                      'Pushed Inline Diff to UI'
+                      {
+                        file_path:
+                          currentChapter?.file_path ??
+                          'manuscript/act-01/ch-08-dem-mua-ben-cang.md',
+                        start_line: 1,
+                        end_line: 1,
+                        new_content: '(đề xuất ví dụ từ nút Chạy thử)',
+                        rationale: 'Đề xuất thử — không áp dụng tự động',
+                      },
+                      `file_path="${currentChapter?.file_path ?? 'manuscript/act-01/ch-08-dem-mua-ben-cang.md'}", line=1`
                     )
                   }
                   className="px-2 py-0.5 border semantic-success-box rounded-md text-[11px] font-semibold flex items-center gap-1"
                 >
-                  <Play size={10} /> Chạy thử
+                  <Play size={10} /> {canRunRealMcp ? 'Chạy MCP thật' : 'Mô phỏng'}
                 </button>
               </div>
               <p className="text-[11px] text-muted">

@@ -125,7 +125,7 @@ export interface RefactorPreviewMatch {
 export interface McpToolExecutionLog {
   id: string;
   timestamp: string;
-  agent_name: 'Cline' | 'OpenCode' | 'Antigravity' | 'Claude Desktop';
+  agent_name: 'Cline' | 'OpenCode' | 'Antigravity' | 'Claude Desktop' | 'NovelForge MCP (local)';
   tool_name:
     | 'novel_search_lore'
     | 'novel_get_chapter_context'
@@ -153,13 +153,15 @@ export function parseMarkdownWithFrontmatter(rawContent: string): {
   wordCount: number;
 } {
   let frontmatter: Record<string, unknown> = {};
-  let body = rawContent;
+  // Normalize CRLF/CR to LF — manuscript files authored on Windows use CRLF.
+  const content = rawContent.replace(/\r\n?/g, '\n');
+  let body = content;
 
-  if (rawContent.startsWith('---\n')) {
-    const endIdx = rawContent.indexOf('\n---\n', 4);
+  if (content.startsWith('---\n')) {
+    const endIdx = content.indexOf('\n---\n', 4);
     if (endIdx !== -1) {
-      const yamlPart = rawContent.slice(4, endIdx);
-      body = rawContent.slice(endIdx + 5);
+      const yamlPart = content.slice(4, endIdx);
+      body = content.slice(endIdx + 5);
       try {
         const parsed = yaml.load(yamlPart);
         if (parsed && typeof parsed === 'object') {
