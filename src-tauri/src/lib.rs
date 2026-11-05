@@ -7,7 +7,7 @@ use commands::{ai_cmd, fs_cmd, linter_cmd, lore_cmd};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             fs_cmd::init_project_workspace,
             fs_cmd::sync_project_sqlite,
@@ -25,8 +25,21 @@ pub fn run() {
             ai_cmd::search_lore_rag,
             vcs::snapshot::create_snapshot,
             vcs::snapshot::list_snapshots,
+            vcs::snapshot::restore_snapshot,
             vcs::diff_engine::compute_prose_diff,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running NovelForge IDE tauri application");
+        .build(tauri::generate_context!());
+
+    match app {
+        Ok(app) => {
+            if let Err(e) = app.run(|_, _| {}) {
+                eprintln!("NovelForge IDE tauri run error: {e}");
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize NovelForge IDE tauri application: {e}");
+            std::process::exit(1);
+        }
+    }
 }

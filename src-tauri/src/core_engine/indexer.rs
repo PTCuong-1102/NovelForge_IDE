@@ -80,13 +80,15 @@ pub fn init_sqlite_db(db_path: &Path) -> Result<Connection> {
     )?;
 
     // Attempt to initialize native `sqlite-vec` virtual table if `vec0` module is loaded in runtime
-    let _ = conn.execute_batch(
+    if let Err(e) = conn.execute_batch(
         "CREATE VIRTUAL TABLE IF NOT EXISTS lore_embeddings USING vec0(
             chunk_id TEXT PRIMARY KEY,
             entity_id TEXT,
             embedding FLOAT[768]
         );",
-    );
+    ) {
+        eprintln!("[NovelForge Info] sqlite-vec vec0 module not active in runtime ({}); fallback to lore_embeddings_store with deterministic cosine similarity.", e);
+    }
 
     Ok(conn)
 }
