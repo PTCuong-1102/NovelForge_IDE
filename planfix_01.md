@@ -543,7 +543,8 @@ Semantics:
 - **`npm test` — 31/31 pass** (publishers, escape HTML, IPC fallback, parser CRLF round-trip trên manuscript thật).
 - **`npm run build`** — static export tới `out/` exit 0 · **`npm run typecheck`** exit 0 · **`npm run verify:utf8`** — 114 files, 0 lỗi.
 - **`cargo test` — 11/11 pass** (paths guard, git snapshots create/list/restore, sync→SQLite→hybrid RAG, parser, linter).
-- **MCP server** — verify qua pipe JSON-RPC thật (initialize/tools/list/tools/call) bằng debug binary.
+- **MCP server** — verify qua pipe JSON-RPC thật (initialize/tools/list/tools/call) bằng debug và release binary.
+- **`tauri build` release build thành công** — `target/release/novelforge-ide.exe` (14.8 MB, 2026-11-05); MCP stdio trên release binary trả đúng `initialize`/`tools/list`.
 - **`.gitattributes`** enforce LF + binary patterns; `src-tauri/gen/` gitignored.
 
 ## 6. Verification tổng (sau M8)
