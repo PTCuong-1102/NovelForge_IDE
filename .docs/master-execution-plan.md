@@ -5,6 +5,20 @@
 
 ---
 
+## 0. TIẾN ĐỘ THỰC TẾ (2026-11-05, đối chiếu implementation)
+
+Chi tiết & verification: `planfix_01.md`. Trạng thái từng giai đoạn:
+
+* **GĐ1 (Workbench & FS): ~90%** — mở project thật qua dialog, đọc/ghi `.md` thẳng xuống đĩa, SQLite index tự sync khi mở project, Ctrl+S ghi đĩa + snapshot Git thật.
+* **GĐ2 (Editor & Lorebook): ~80%** — TipTap lossless Markdown, Lorebook đọc/ghi thẳng file `lorebook/*.md`, DB view filter thật.
+* **GĐ3 (IntelliJ Inspector): ~70%** — linter + implicit scan + refactor preview chạy trong app (lưu đĩa qua debounced persist). Chưa có UI duyệt MCP proposals.
+* **GĐ4 (AI & MCP): ~60%** — MCP stdio server thật (`novelforge-ide mcp`), 4 tool dùng SQLite/linter thật; AI Dock gọi IPC khi mở project đĩa, gắn nhãn "Mô phỏng" ở browser. Chưa có Inline Diff từ agent bên ngoài áp dụng vào editor (proposals lưu `.novelforge/proposals/`).
+* **GĐ5 (Git & Publishing): ~80%** — snapshot/restore thật qua libgit2 (an toàn); EPUB 3/DOCX thật (client-side); PDF qua print dialog. Chưa có GitHub Actions release, auto-updater.
+
+**Lệch so với kế hoạch:** `sqlite-vec` vec0 chưa dùng (brute-force cosine + BM25 — xem ADR-004); file watcher `notify` bỏ khỏi MVP; yêu cầu mới: MSVC Build Tools trên Windows.
+
+---
+
 ## 1. CẤU TRÚC THƯ MỤC DỰ ÁN CHUẨN (REPOSITORY BOILERPLATE)
 
 Dự án được tổ chức theo cấu trúc Monorepo gọn nhẹ, tách biệt rõ ràng giữa **Frontend (Next.js)** và **Core Engine (Rust/Tauri)**:

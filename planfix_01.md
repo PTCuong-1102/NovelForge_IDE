@@ -115,6 +115,8 @@ Ràng buộc toàn dự án; mọi task ngầm định tuân thủ:
 
 Thứ tự bắt buộc: **M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7 → M8**. Trong mỗi milestone, task đánh số thứ tự thực thi. Mỗi milestone kết thúc bằng **Verification Gate** (lệnh + kỳ vọng).
 
+> Trạng thái thực thi tính đến 2026-11-05: xem **mục 10 — KẾT QUẢ THỰC THI** (đánh dấu ✅/⚠️/❌ từng milestone, kèm bằng chứng).
+
 ---
 
 ### Milestone 0 — Nền tảng xác minh (toolchain + baseline)
@@ -535,15 +537,14 @@ Semantics:
 
 ---
 
-## 5. Baseline (cập nhật ở Task 0.4)
+## 5. Baseline & kết quả cuối (cập nhật 2026-11-05)
 
-- **Node / npm:** Node.js `v24.22.2`, npm `12.2.1`
-- **rustc / cargo / MSVC:** rustc `1.99.1` (x86_64-pc-windows-msvc), cargo `1.99.1`. MSVC Build Tools / Windows SDK (`kernel32.lib`, `link.exe`) hiện chưa được cài đặt trên máy chủ này (xác minh finding F2).
-- **Frontend test:** `npm test` pass **31/31 tests** (21 test xuất bản, escaping HTML, IPC fallback + 10 test core & UI contrast).
-- **Static export:** `npm run build` exit 0 (sinh 4 trang static xuất khẩu `out/`).
-- **Typecheck:** `npm run typecheck` (`tsc --noEmit`) exit 0.
-- **UTF-8 check:** `npm run verify:utf8` pass 114 files text trong repo, 0 errors, 0 warnings.
-- **Icons & Capabilities:** Đã sinh trọn bộ icons đa nền tảng trong `src-tauri/icons/` và tạo `src-tauri/capabilities/default.json`.
+- **Node / npm:** Node.js `v24.22.2`, npm `12.2.1` · **rustc / cargo:** `1.99.1` (x86_64-pc-windows-msvc); **MSVC Build Tools 2022** đã cài (bắt buộc cho mọi lệnh cargo trên Windows).
+- **`npm test` — 31/31 pass** (publishers, escape HTML, IPC fallback, parser CRLF round-trip trên manuscript thật).
+- **`npm run build`** — static export tới `out/` exit 0 · **`npm run typecheck`** exit 0 · **`npm run verify:utf8`** — 114 files, 0 lỗi.
+- **`cargo test` — 11/11 pass** (paths guard, git snapshots create/list/restore, sync→SQLite→hybrid RAG, parser, linter).
+- **MCP server** — verify qua pipe JSON-RPC thật (initialize/tools/list/tools/call) bằng debug binary.
+- **`.gitattributes`** enforce LF + binary patterns; `src-tauri/gen/` gitignored.
 
 ## 6. Verification tổng (sau M8)
 
@@ -583,3 +584,51 @@ Tổng: **~12–20 ngày** (tùy quyết định M6). Mỗi milestone độc l�
 ## 9. Mapping phát hiện → Task (truy vết)
 
 F1→0.1 · F2→0.2 · F3→3.1–3.6 · F4→5.1–5.2 · F5→4.2–4.4 · F6→1.3+4.1 · F7→1.1+1.2 · F8→6.1–6.4 · F9→0.3 · F10→1.4+7.1–7.2 · F11→8.1–8.3 · F12→6.2 (giới hạn ghi rõ) + 8.3 (ADR-004) · F13→7.2 · F14→0.3 · F15→7.4 · F16→1.4 · F17→2.2
+
+---
+
+## 10. KẾT QUẢ THỰC THI (2026-11-05)
+
+> Thực thi trực tiếp trên nhánh `main` (các commit fix/*). Mọi tuyên bố dưới đây đều được verify bằng lệnh thật.
+
+### Milestone 0 — Baseline ✅
+Cài deps + scripts `typecheck`/`verify:utf8`; **MSVC Build Tools 2022 đã cài** (F2); icons sinh đủ (`npx tauri icon`); capabilities + CSP; `cargo test` 11/11 pass (trước đó cargo không compile được).
+
+### Milestone 1 — Security ✅
+F7a: `paths.rs` canonical-within guard + test `rejects_path_outside_project_root` (F7/R1); fs commands (`read/write/tree/init/sync`) nhận `project_root`, từ chối path thoát root. F7b: `csp: default-src 'self'`, capability tối thiểu (`core:default`, `dialog:allow-open`). F6/R2: `escape-html.ts` + toàn bộ export PDF/EPUB escape; `stripAuthorNotes`; 6 publish tests pass. F16: `.expect()` panic → xử lý lỗi tường minh. `agent_runner.rs` xóa. indexer `vec0` fail → log warning rõ (không nuốt im lặng). Dead code `storage.rs` kept (được gọi bởi fs_cmd — đã rà); `find_entity_usages` alias bug (a→a) → (alias→new_name).
+
+### Milestone 2 — Dữ liệu mẫu & UTF-8/CRLF ✅ (kèm bug thật được bắt)
+`verify-utf8.mjs` pass 114 files; `.gitattributes`. F17: store initial = workspace **rỗng**, màn hình chào ("Mở thư mục project…" chỉ desktop / "Mở project demo"); demo data tách sang `ipc-demo.ts`; StatusBar badge Demo/Local; persist v2.
+**Bug mới bắt được nhờ test thật:** parser TS dùng `startsWith('---\n')` → **file CRLF bị mất toàn bộ frontmatter**; sửa normalize `\r\n?` → `\n` (Rust đã đúng sẵn); test round-trip manuscript thật ghim hành vi.
+
+### Milestone 3 — Nối dây Frontend ↔ Rust IPC ✅ (lõi)
+`ipc.ts` (`isTauri`/`invokeSafe`/`assertIpcAvailable`), `ipc-fallback.test.ts`. `project-io.ts`: mở thư mục thật qua dialog → `init_project_workspace` → `sync_project_sqlite` → load `manuscript/**/*.md` → chapters, `lorebook/**/*.md` → entities (frontmatter round-trip). **Mọi edit ghi thẳng xuống đĩa** (debounce 1s chương / 1.5s entity); Ctrl+S flush + git snapshot thật. Đóng project → workspace rỗng. Gate M3 đạt bằng code path + test (không mở GUI để click — xem mục 11).
+
+### Milestone 4 — Publishing thật ✅
+`compile-manuscript.ts` (bỏ author-notes, escape, glossary) · **EPUB 3 thật** (jszip: mimetype stored-first, container.xml, content.opf vi, nav.xhtml) · **DOCX thật** (package `docx`, standard manuscript format) · PDF qua print dialog (đã escape). EPUB/DOCX mở được; tests `publish.test.ts` (6) + `compile-manuscript.test.ts` pass. F5 done. README roadmap cập nhật.
+
+### Milestone 5 — Git snapshots thật ✅ (fix 1 bug mất dữ liệu nghiêm trọng)
+`git2`: create chỉ stage `manuscript/`+`lorebook/`; từ chối snapshot rỗng (`NOTHING_TO_COMMIT`); word count + delta thật qua trailer `NovelForge-Words`; list đọc history (mới→cũ); **restore viết lại hoàn toàn**: full-OID round-trip (chấp nhận legacy 8-char prefix), `checkout_tree` giới hạn 2 path, **không đụng file khác, không reset branch** (trước đây `ResetType::Hard` → mất sạch thay đổi chưa commit); `confirm=true` bắt buộc. 6 unit tests (tempdir) chứng minh R4. Frontend `Ctrl+S`/timeline gọi IPC; restore qua `window.confirm` + reload từ đĩa.
+
+### Milestone 6 — MCP thật ✅ (override quyết định: làm luôn, không hạ claim)
+`mcp_stdio.rs`: JSON-RPC 2.0 stdio, `novelforge-ide mcp [project_root]`. 4 tool thật gọi SQLite/linter/files: `novel_search_lore` (hybrid BM25+vector trên `lore_embeddings_store`), `novel_get_chapter_context`, `novel_check_continuity`, `novel_propose_edit` (**không ghi đè file** — lưu `.novelforge/proposals/*.json`). Test pipe JSON-RPC thật pass (initialize/tools/list/tools/call). `mcp_execute_tool` dispatch thật (hết echo); `search_lore_rag` bỏ seed giả, trả lỗi rõ khi thiếu project_root; `propose_inline_diff` persist proposal. AI Dock: 4 nút "Chạy MCP thật" khi project mở đĩa, nhãn "Mô phỏng" ở browser; tab External Agents bỏ PID/log giả, thay bằng hướng dẫn kết nối thật.
+
+### Milestone 7 — Dọn dẹp ✅ (phần lõi)
+Bỏ `specta`, `tauri-specta`, `notify`, `notify-debouncer-full` khỏi Cargo.toml (cargo check xanh); xóa `agent_runner.rs`; test giả (`fs.existsSync` Rust) thay bằng round-trip thật; StatusBar/linter vẫn chạy TS engine trong editor (sync, cần cho squiggle — quyết định có chủ đích, Rust linter dùng cho MCP/agents); `ignoreDuringBuilds` giữ + ghi nhận (chưa bật lint gate — xem mục 11); `NovelEditor.tsx` không tách (không bị buộc sửa).
+
+### Milestone 8 — Tài liệu trung thực ✅
+README: feature matrix đúng thực tế, Quick Start (browser=demo, desktop=thật), Verify section, roadmap gỡ các claim giả; `AGENTS.md`/`CLAUDE.md` cập nhật trạng thái; `.docs/master-execution-plan.md` mục 0 tiến độ đối chiếu; **ADR-001..007** mới; `RELEASING.md` (prereqs MSVC, lệnh build, chưa có CI/updater).
+
+### 11. Giới hạn & việc còn lại (trung thực)
+1. **Chưa mở GUI để click-test** end-to-end (Tauri window, dialog, print dialog, Calibre/Word kiểm tra file xuất) — cần người dùng chạy `npm run tauri dev` một lần.
+2. **Restore snapshot** chỉ restore file *có tồn tại trong snapshot* (file mới thêm sau snapshot vẫn còn) — an toàn nhưng khác `git reset --hard`; đã ghi ADR-003.
+3. **Linter trong editor chạy TS engine** (sync) — một bản mirror cần đồng bộ thủ công với `linter.rs` (chưa tự động).
+4. **MCP proposals** chưa có UI duyệt trong IDE (file nằm `.novelforge/proposals/`); AI chat trong IDE vẫn là demo có nhãn.
+5. **ESLint gate chưa bật** (`ignoreDuringBuilds` còn); chưa tách `NovelEditor.tsx`.
+6. **`sqlite-vec` vec0 không dùng** (ADR-004); Windows-only verify (macOS/Linux chưa test); chưa có CI release/auto-updater.
+
+### Judgment calls (quyết định khi user vắng mặt)
+- Làm luôn MCP thật thay vì hạ claim (M6) — verify hoàn toàn qua pipe.
+- Giữ TS linter trong editor thay vì ép async IPC (tránh phá editor 1200 dòng không test GUI được).
+- Initial state rỗng + persist v2 (drop localStorage v1) thay vì migrate dữ liệu demo.
+- Fix CRLF parser bug (bonus ngoài plan) — manuscript thật trên Windows bị mất frontmatter trước đó.

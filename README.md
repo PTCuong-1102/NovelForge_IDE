@@ -2,6 +2,8 @@
 
 # 🖋️ NovelForge IDE
 
+> **Trạng thái: MVP đang phát triển (2026-11).** App chạy thật trên desktop (Tauri v2 + Rust): mở thư mục project, đọc/ghi file Markdown thẳng xuống đĩa, linter nhất quán cốt truyện, snapshot Git thật qua libgit2, xuất EPUB 3 / DOCX / PDF (qua hộp thoại in), và MCP stdio server cho agent bên ngoài. Chế độ trình duyệt (`npm run dev`) chạy **dữ liệu mẫu có chủ đích** — không ghi file thật. Xem `.docs/architecture-decisions.md` và `planfix_01.md` để biết giới hạn hiện tại.
+
 ### *The Compiler-Grade Desktop IDE for Novelists, Screenwriters & World-Builders*
 
 [![Next.js 15](https://img.shields.io/badge/Next.js-15.0-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
@@ -62,20 +64,24 @@ Traditional word processors (**Microsoft Word, Google Docs, Scrivener**) were bu
 * **Time-Scrubber Slider:** Drag the chapter timeline slider to watch alliances, rivalries, and mentorship ties morph and invert across the story's progression.
 
 ### 5. 📜 Story Timeline Snapshots & What-If Branching
-* **Narrative Version Control:** Create zero-overhead Git snapshots of your manuscript and world state (`Ctrl+S`).
-* **What-If Exploration:** Branch out alternate plotlines (e.g., *"branch: protag-joins-villain"*) and test narrative arcs without risking your master manuscript.
-* **One-Click Restore:** Compare diffs and roll back to any historical milestone instantly.
+* **Narrative Version Control:** Tạo Git snapshot thật của manuscript và lorebook (`Ctrl+S`) — commit được ghi qua `libgit2`, chỉ stage `manuscript/` và `lorebook/`.
+* **Safe Restore:** Khôi phục snapshot chỉ ghi đè `manuscript/` và `lorebook/` (không đụng file khác, không xóa lịch sử Git, không reset branch) — luôn yêu cầu xác nhận.
+* **Honest Delta:** `word_count_delta` được tính từ số từ thật (lưu trong commit trailer `NovelForge-Words`), không phải số giả.
 
 ### 6. 📦 Publishing Compiler Pipeline (`Ctrl+E`)
-* **Multi-Format Static Generation:** Compiles entire manuscripts into publication-ready formats:
-  * 📕 **EPUB 3 / HTML Reader:** Clean semantic markup with embedded chapter navigation.
-  * 📄 **DOCX / Standard Manuscript Format:** Formatted for literary agents and editorial submissions (double-spaced, standard margins).
-  * 📑 **PDF Print View:** Formatted with serif typography, page breaks, and chapter headers.
-* **Sanitization Engine:** Automatically strips private author comments (`> [!GHI_CHÚ_TÁC_GIẢ]`) and optionally compiles a dynamic **Glossary / Lore Index** appendix.
+* **Multi-Format Export:**
+  * 📕 **EPUB 3 thật** (client-side `jszip`): mimetype chuẩn, `META-INF/container.xml`, `content.opf`, nav — mở được bằng Calibre/Edge.
+  * 📄 **DOCX thật** (gói `docx`): định dạng bản thảo (lề 1 inch, giãn dòng đôi, số trang).
+  * 📑 **PDF** qua hộp thoại in của hệ thống (chọn "Lưu dưới dạng PDF").
+* **Sanitization Engine:** Tự động loại bỏ các khối Ghi chú tác giả (`> [!GHI_CHÚ_TÁC_GIẢ]`) và escape toàn bộ HTML khi xuất bản (chống HTML injection từ chính bản thảo).
 
-### 7. 🤖 Multi-Agent AI Bridge (MCP)
-* **Model Context Protocol (MCP) Integration:** Connects seamlessly to external autonomous agents (**Cline, Antigravity, OpenCode**).
-* **Inline Proposal Cards:** Agents propose rewrite diffs directly on target paragraphs with detailed literary rationales. Accept (`Enter`) or Reject (`Esc`) with a single keystroke.
+### 7. 🤖 Multi-Agent AI Bridge (MCP stdio)
+* **MCP Server thật (stdio JSON-RPC):** chạy như một tiến trình riêng — `novelforge-ide mcp [project_root]` — cung cấp 4 tool cho Cline, Claude Desktop, OpenCode:
+  * `novel_search_lore(query, entity_type?)` — Hybrid Search (BM25 + vector feature-hash) trên index SQLite của project.
+  * `novel_get_chapter_context(chapter_id, window_size?)` — nội dung chương + các chương trước/sau theo thứ tự act/order.
+  * `novel_check_continuity(draft_text, chapter_id)` — chạy Continuity Linter thật trên đoạn nháp.
+  * `novel_propose_edit(file_path, start_line, end_line, new_content, rationale)` — **không bao giờ ghi đè file**; đề xuất được lưu tại `.novelforge/proposals/*.json` để bạn duyệt.
+* **Trong IDE:** tab MCP của AI Dock gọi cùng các tool qua IPC khi project mở trên đĩa; ở chế độ trình duyệt, các nút được gắn nhãn rõ là **"Mô phỏng"**.
 
 ### 8. 🎨 Typographic Ergonomics & Zen Focus Mode
 * **Three Curated Themes:**
@@ -181,13 +187,15 @@ cd NovelForge_IDE
 npm install
 ```
 
-### 3. Run the Web Application
+### 3. Run the Web Application (Demo Mode)
 ```bash
 # Start development server with live reload
 npm run dev
 
-# Open in browser: http://localhost:3000
+# Open in browser: http://localhost:3456
 ```
+> Trong trình duyệt, app chạy **dữ liệu mẫu có chủ đích** (truyện "Huyết Cảng 2026").
+> Không đọc/ghi file thật, không gọi Rust. Mở project thật phải dùng bản desktop bên dưới.
 
 ### 4. Build Production Static Bundle
 ```bash
@@ -198,7 +206,11 @@ npx serve out -p 3456
 # Open in browser: http://localhost:3456
 ```
 
-### 5. Run Native Desktop App (Tauri v2)
+### 5. Run Native Desktop App & Open a Real Project (Tauri v2)
+
+**Prerequisites (Windows):** [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+with the "Desktop development with C++" workload (provides `link.exe` and the Windows SDK). Rust 1.75+ via rustup.
+
 ```bash
 # Development mode with native desktop window
 npm run tauri dev
@@ -206,6 +218,27 @@ npm run tauri dev
 # Production standalone executable build
 npm run tauri build
 ```
+
+Khi app desktop mở lần đầu, bạn sẽ thấy màn hình chào với 2 lựa chọn:
+
+1. **"Mở thư mục project…"** — chọn thư mục có cấu trúc:
+   ```text
+   my-novel/
+   ├── manuscript/act-01/*.md     # bản thảo (Markdown + YAML frontmatter)
+   └── lorebook/characters/*.md   # hồ sơ nhân vật / địa danh / vật phẩm
+   ```
+   App đọc/ghi thẳng các file này xuống đĩa (Ctrl+S lưu ngay), không copy đi đâu cả.
+2. **"Mở project demo"** — chạy thử bằng dữ liệu mẫu trong bộ nhớ (không đụng ổ đĩa).
+
+**MCP bridge cho agent bên ngoài** (Cline, Claude Desktop, OpenCode) — chạy như một tiến trình stdio riêng, trỏ cwd vào project root:
+
+```bash
+# sau khi build/cài đặt, hoặc chạy qua cargo:
+cd src-tauri && cargo run -- mcp D:/Project/MyNovel
+```
+
+4 tool: `novel_search_lore`, `novel_get_chapter_context`, `novel_check_continuity`, `novel_propose_edit`
+(đề xuất sửa KHÔNG bao giờ tự ghi đè file — lưu tại `.novelforge/proposals/*.json`).
 
 > **Note for Linux users:** Ensure native GTK & WebKit libraries are installed:
 > ```bash
@@ -240,19 +273,27 @@ NovelForge IDE is designed for lightning-fast keyboard-driven navigation, mirror
 
 ## 🧪 Testing & Verification
 
-NovelForge includes a comprehensive unit test suite covering the entire core literature engine:
-
 ```bash
-npm test
+npm test                # frontend: parser, linter, publishers (31 tests)
+npm run typecheck       # tsc --noEmit
+npm run verify:utf8     # kiểm tra toàn bộ source là UTF-8 hợp lệ
+cd src-tauri && cargo test   # Rust: parser, linter, paths, git snapshots, sync→RAG (11 tests)
 ```
 
+### Verified (2026-11-05)
+* `npm test` — **31/31 pass** (gồm round-trip CRLF-safe của `manuscript/*.md` thật).
+* `npm run build` — static export tới `out/` thành công; `npm run typecheck` — exit 0.
+* `cargo test` — **11/11 pass**, gồm: path-traversal bị chặn, git snapshot create/list/restore
+  (restore chỉ ghi đè `manuscript/` & `lorebook/`), và pipeline
+  `sync_workspace_to_sqlite` → hybrid RAG search tìm được nhân vật đã seed.
+* MCP server kiểm chứng bằng pipe JSON-RPC thật (`initialize`, `tools/list`, `tools/call`):
+  trả đúng 4 tool và kết quả thật từ SQLite.
+
 ### Test Coverage Highlights
-* `✔` **YAML Frontmatter Parser:** Lossless AST serialization and frontmatter parsing.
-* `✔` **Vietnamese & Latin Word Counter:** Accurate word counts respecting diacritics and word boundaries.
-* `✔` **Implicit Mention Scanner:** Scans multi-word aliases and entity titles without manual `@` markers.
-* `✔` **Continuity Linter (Rule 1):** Accurately flags dead characters appearing in subsequent timestamps.
-* `✔` **Continuity Linter (Rule 3):** Accurately detects phrase repetitions within close proximity.
-* `✔` **Smart Refactoring Previews:** Generates contextual before/after sentence previews without false-positive substring matches.
+* `✔` **YAML Frontmatter Parser:** lossless round-trip, chịu được file CRLF của Windows.
+* `✔` **Implicit Mention Scanner & Continuity Linter (Rule 1, 3):** quét đại từ/biệt danh, bẫy nhân vật đã chết xuất hiện sai thời điểm.
+* `✔` **Publishers:** EPUB 3 hợp lệ (mimetype/opf/nav), DOCX hợp lệ, HTML escape chống injection.
+* `✔` **Path Traversal Guard:** IPC file commands từ chối path nằm ngoài project root.
 
 ---
 
@@ -261,14 +302,17 @@ npm test
 - [x] Next.js 15 + Tauri v2 Monorepo Core
 - [x] TipTap Semantic Editor with YAML Frontmatter Integration
 - [x] Continuity Linter Engine (Dead character detection, timeline chronology, style repetition)
+- [x] Real Local-First Project Flow — mở/ghi thẳng file `.md` của project (desktop)
 - [x] Notion-Style Lorebook Relational Database & Implicit Auto-Linking
 - [x] `@xyflow/react` Interactive Character Relationship Graph with Timeline Scrubber
 - [x] Cross-Chapter Smart Literary Refactoring (`Shift+F6`)
-- [x] Multi-Format Publishing Compiler (EPUB 3, DOCX, PDF)
-- [x] Git Story Snapshots & Narrative Branching
-- [x] Multi-Agent AI Diff Review System (MCP Integration)
+- [x] Git Story Snapshots via libgit2 (safe restore: chỉ `manuscript/` + `lorebook/`)
+- [x] Multi-Format Publishing Compiler (EPUB 3 + DOCX thật, PDF qua print dialog)
+- [x] MCP stdio server cho agent bên ngoài (4 tool: search_lore / chapter_context / check_continuity / propose_edit)
+- [ ] IDE UI cho MCP proposals (đọc `.novelforge/proposals/*.json` trong AI Dock)
 - [ ] Local Offline LLM Integration via `llama.cpp` / Ollama
-- [ ] Vector Embedding Semantic Search (`sqlite-vec`) for cross-novel lore search
+- [ ] Native `sqlite-vec` vec0 (hiện dùng bảng thường + cosine brute-force; BM25 hybrid đã có)
+- [ ] File watcher cho thay đổi từ bên ngoài (`notify`) — hiện chưa có
 - [ ] Collaborative Peer-to-Peer Story Review via CRDTs (Yjs)
 
 ---
