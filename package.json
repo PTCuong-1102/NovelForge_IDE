@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.2.0",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tiptap/extension-character-count": "^2.11.5",
     "@tiptap/extension-highlight": "^2.11.5",
     "@tiptap/extension-placeholder": "^2.11.5",

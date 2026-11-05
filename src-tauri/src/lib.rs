@@ -31,12 +31,7 @@ pub fn run() {
         .build(tauri::generate_context!());
 
     match app {
-        Ok(app) => {
-            if let Err(e) = app.run(|_, _| {}) {
-                eprintln!("NovelForge IDE tauri run error: {e}");
-                std::process::exit(1);
-            }
-        }
+        Ok(app) => app.run(|_, _| {}),
         Err(e) => {
             eprintln!("Failed to initialize NovelForge IDE tauri application: {e}");
             std::process::exit(1);
