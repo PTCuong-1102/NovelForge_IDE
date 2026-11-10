@@ -70,6 +70,67 @@ fn extract_yaml_key_order(raw_yaml: &str) -> Vec<String> {
     keys
 }
 
+/// Removes one matching pair of surrounding quotes from a raw YAML scalar.
+fn strip_surrounding_quotes(value: &str) -> &str {
+    let bytes = value.as_bytes();
+    if bytes.len() >= 2 {
+        let first = bytes[0];
+        let last = bytes[bytes.len() - 1];
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+            return &value[1..value.len() - 1];
+        }
+    }
+    value
+}
+
+/// Converts a raw YAML scalar into a JSON value without full YAML support.
+fn lenient_yaml_value(raw_value: &str) -> serde_json::Value {
+    let value = strip_surrounding_quotes(raw_value.trim());
+    if value.is_empty() {
+        return serde_json::Value::String(String::new());
+    }
+    if let Ok(number) = value.parse::<i64>() {
+        return serde_json::Value::Number(number.into());
+    }
+    if let Ok(number) = value.parse::<f64>() {
+        if let Some(number) = serde_json::Number::from_f64(number) {
+            return serde_json::Value::Number(number);
+        }
+    }
+    match value {
+        "true" => return serde_json::Value::Bool(true),
+        "false" => return serde_json::Value::Bool(false),
+        _ => {}
+    }
+    serde_json::Value::String(value.to_string())
+}
+
+/// Recovers simple top-level `key: value` pairs when the YAML frontmatter fails to parse,
+/// so a light syntax error never wipes the whole metadata block.
+fn parse_lenient_yaml(raw_yaml: &str) -> HashMap<String, serde_json::Value> {
+    let mut map = HashMap::new();
+    for line in raw_yaml.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.is_empty()
+            || trimmed.starts_with('#')
+            || trimmed.starts_with(' ')
+            || trimmed.starts_with('\t')
+            || trimmed.starts_with('-')
+        {
+            continue;
+        }
+        let Some((key, raw_value)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        map.insert(key.to_string(), lenient_yaml_value(raw_value));
+    }
+    map
+}
+
 /// Parses a Markdown document containing optional YAML frontmatter (`--- ... ---`)
 /// and extracts structured metadata, lossless block AST, paragraphs, headings, and word count.
 pub fn parse_markdown_with_frontmatter(raw: &str) -> ParsedDocument {
@@ -81,10 +142,9 @@ pub fn parse_markdown_with_frontmatter(raw: &str) -> ParsedDocument {
     if let Some(yaml_str) = yaml_opt {
         raw_frontmatter = yaml_str.clone();
         frontmatter_keys_order = extract_yaml_key_order(&yaml_str);
-        if let Ok(parsed_yaml) =
-            serde_yaml::from_str::<HashMap<String, serde_json::Value>>(&yaml_str)
-        {
-            frontmatter = parsed_yaml;
+        match serde_yaml::from_str::<HashMap<String, serde_json::Value>>(&yaml_str) {
+            Ok(parsed_yaml) => frontmatter = parsed_yaml,
+            Err(_) => frontmatter = parse_lenient_yaml(&yaml_str),
         }
     }
 
@@ -190,13 +250,6 @@ pub fn parse_markdown_with_frontmatter(raw: &str) -> ParsedDocument {
 
 /// Serializes frontmatter and Markdown body back into a single lossless `.md` file string.
 /// Preserves key ordering when `ordered_keys` is provided, otherwise sorts keys deterministically.
-pub fn serialize_markdown_with_frontmatter(
-    frontmatter: &HashMap<String, serde_json::Value>,
-    body: &str,
-) -> String {
-    serialize_markdown_with_ordered_frontmatter(frontmatter, &[], body)
-}
-
 pub fn serialize_markdown_with_ordered_frontmatter(
     frontmatter: &HashMap<String, serde_json::Value>,
     ordered_keys: &[String],
@@ -295,5 +348,45 @@ mod tests {
         assert_eq!(reparsed.frontmatter_keys_order, parsed.frontmatter_keys_order);
         assert_eq!(reparsed.blocks, parsed.blocks);
         assert_eq!(reparsed.word_count, parsed.word_count);
+    }
+
+    #[test]
+    fn test_invalid_yaml_frontmatter_keeps_keys_and_order() {
+        let sample = "---\nid: ch_01\ntitle: \"Bóng\norder: 1\n---\n\nNội dung.";
+        let parsed = parse_markdown_with_frontmatter(sample);
+        assert_eq!(parsed.frontmatter_keys_order, vec!["id", "title", "order"]);
+        assert_eq!(
+            parsed.frontmatter.get("id").and_then(|v| v.as_str()),
+            Some("ch_01")
+        );
+        assert_eq!(
+            parsed.frontmatter.get("order").and_then(|v| v.as_i64()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_headings_and_custom_keys_survive_save_roundtrip() {
+        let sample = "---\nid: ch_01\ntitle: Mở đầu\nweather: \"Mưa axit\"\n---\n\n# Chương 1: Mở đầu\n\nMưa rơi.\n\n***\n\n## Cảnh 2\n\nĐoạn hai.";
+        let parsed = parse_markdown_with_frontmatter(sample);
+        assert_eq!(parsed.frontmatter_keys_order, vec!["id", "title", "weather"]);
+
+        let body = blocks_to_markdown(&parsed.blocks);
+        assert!(body.contains("# Chương 1: Mở đầu"));
+        assert!(body.contains("## Cảnh 2"));
+        assert!(body.contains("***"));
+
+        let reserialized = serialize_markdown_with_ordered_frontmatter(
+            &parsed.frontmatter,
+            &parsed.frontmatter_keys_order,
+            &body,
+        );
+        let reparsed = parse_markdown_with_frontmatter(&reserialized);
+        assert_eq!(reparsed.frontmatter_keys_order, parsed.frontmatter_keys_order);
+        assert_eq!(reparsed.blocks, parsed.blocks);
+        assert_eq!(
+            reparsed.frontmatter.get("weather").and_then(|v| v.as_str()),
+            Some("Mưa axit")
+        );
     }
 }

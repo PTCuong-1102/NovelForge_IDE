@@ -24,6 +24,10 @@ export interface LoreEntity {
   summary: string;
   body: string;
   updated_at: string;
+  /** YAML frontmatter keys that are not part of the standard entity schema. */
+  extra_frontmatter?: Record<string, unknown>;
+  /** Original declaration order of the YAML frontmatter keys. */
+  frontmatter_keys_order?: string[];
 }
 
 export interface ChapterDocument {
@@ -44,6 +48,10 @@ export interface ChapterDocument {
   is_flashback: boolean;
   paragraphs: string[];
   updated_at: string;
+  /** YAML frontmatter keys that are not part of the standard chapter schema. */
+  extra_frontmatter?: Record<string, unknown>;
+  /** Original declaration order of the YAML frontmatter keys. */
+  frontmatter_keys_order?: string[];
 }
 
 export interface DetectedEntityMention {

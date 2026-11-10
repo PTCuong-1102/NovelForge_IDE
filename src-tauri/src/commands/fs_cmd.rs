@@ -1,5 +1,5 @@
 use crate::core_engine::parser::{
-    parse_markdown_with_frontmatter, serialize_markdown_with_frontmatter, ParsedDocument,
+    parse_markdown_with_frontmatter, serialize_markdown_with_ordered_frontmatter, ParsedDocument,
 };
 use crate::core_engine::paths::canonical_within;
 use crate::core_engine::storage::{
@@ -101,12 +101,17 @@ pub async fn write_markdown_file(
     project_root: String,
     relative_path: String,
     frontmatter: HashMap<String, serde_json::Value>,
+    ordered_keys: Option<Vec<String>>,
     body: String,
 ) -> Result<(), String> {
     let safe_path = canonical_within(Path::new(&project_root), Path::new(&relative_path))
         .map_err(|e| format!("Security violation: {}", e))?;
 
-    let serialized = serialize_markdown_with_frontmatter(&frontmatter, &body);
+    let serialized = serialize_markdown_with_ordered_frontmatter(
+        &frontmatter,
+        ordered_keys.as_deref().unwrap_or(&[]),
+        &body,
+    );
     if let Some(parent) = safe_path.parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }

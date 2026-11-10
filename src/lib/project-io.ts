@@ -8,10 +8,20 @@ export interface FileTreeNode {
   children: FileTreeNode[];
 }
 
+export interface ParsedBlock {
+  kind: 'heading' | 'paragraph' | 'scene_break' | 'author_note' | 'block_quote';
+  level?: number;
+  text?: string;
+  is_flashback?: boolean;
+}
+
 export interface ParsedDocument {
   frontmatter: Record<string, unknown>;
+  frontmatter_keys_order?: string[];
+  raw_frontmatter?: string;
   body: string;
   paragraphs?: string[];
+  blocks?: ParsedBlock[];
 }
 
 export interface ProjectLoadResult {
@@ -28,6 +38,55 @@ const bool = (v: unknown, fallback = false): boolean =>
   typeof v === 'boolean' ? v : v == null ? fallback : v === 'true';
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.map((x) => str(x)).filter(Boolean) : typeof v === 'string' ? [v] : [];
+
+/** YAML frontmatter keys owned by the chapter schema; anything else is preserved verbatim. */
+const CHAPTER_FRONTMATTER_KEYS = new Set([
+  'id',
+  'act_id',
+  'act_title',
+  'order',
+  'title',
+  'status',
+  'pov_character_id',
+  'pov_character_name',
+  'story_date',
+  'story_year',
+  'location_id',
+  'location_tag',
+  'target_words',
+  'is_flashback',
+]);
+
+/** YAML frontmatter keys owned by the entity schema; anything else is preserved verbatim. */
+const ENTITY_FRONTMATTER_KEYS = new Set([
+  'id',
+  'type',
+  'title',
+  'aliases',
+  'status',
+  'tags',
+  'birth_year',
+  'age_at_story',
+  'faction',
+  'role',
+  'appearance',
+  'personality',
+  'death_chapter_order',
+  'death_chapter_title',
+  'death_date',
+]);
+
+/** Collects the frontmatter keys that the standard schema does not own. */
+function pickExtraFrontmatter(
+  frontmatter: Record<string, unknown>,
+  standardKeys: Set<string>
+): Record<string, unknown> {
+  const extras: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (!standardKeys.has(key)) extras[key] = value;
+  }
+  return extras;
+}
 
 export function relativeToProject(rootPath: string, absolutePath: string): string {
   const root = rootPath.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -46,15 +105,34 @@ function flattenMdFiles(nodes: FileTreeNode[], acc: FileTreeNode[] = []): FileTr
   return acc;
 }
 
-/** Paragraphs for editing: prefer Rust-parsed paragraphs; else split body on blank lines. */
+/** Rebuilds a canonical Markdown block line from the Rust block AST. */
+function blockToMarkdown(block: ParsedBlock): string {
+  const text = (block.text ?? '').trim();
+  switch (block.kind) {
+    case 'heading': {
+      const level = Math.min(6, Math.max(1, block.level ?? 1));
+      return `${'#'.repeat(level)} ${text}`;
+    }
+    case 'scene_break':
+      return '***';
+    case 'author_note':
+      return `> [!GHI_CHÚ_TÁC GIẢ] ${text}`;
+    case 'block_quote':
+      return `> ${text}`;
+    default:
+      return text;
+  }
+}
+
+/** Paragraphs for editing: prefer the block AST (keeps headings), else split body on blank lines. */
 function bodyToParagraphs(doc: ParsedDocument): string[] {
-  if (Array.isArray(doc.paragraphs) && doc.paragraphs.length > 0) {
-    return doc.paragraphs.map((p) => p.trim()).filter(Boolean);
+  if (Array.isArray(doc.blocks) && doc.blocks.length > 0) {
+    return doc.blocks.map(blockToMarkdown).filter(Boolean);
   }
   return doc.body
-    .split(/\n\s*\n/)
+    .split(/\r?\n\s*\r?\n/)
     .map((p) => p.trim())
-    .filter((p) => p && !p.startsWith('#'));
+    .filter(Boolean);
 }
 
 function entityTypeFromPath(relPath: string, fmType: string): EntityType {
@@ -89,7 +167,7 @@ export function parsedToChapter(relPath: string, doc: ParsedDocument): ChapterDo
     file_path: relPath,
     status: chapterStatus(fm.status),
     pov_character_id: str(fm.pov_character_id),
-    pov_character_name: str(fm.pov_character_name),
+    pov_character_name: str(fm.pov_character_name, str(fm.pov)),
     story_date: str(fm.story_date),
     story_year: num(fm.story_year, new Date().getFullYear()),
     location_id: str(fm.location_id),
@@ -97,12 +175,15 @@ export function parsedToChapter(relPath: string, doc: ParsedDocument): ChapterDo
     target_words: num(fm.target_words, 1000),
     is_flashback: bool(fm.is_flashback),
     paragraphs: bodyToParagraphs(doc),
+    extra_frontmatter: pickExtraFrontmatter(fm, CHAPTER_FRONTMATTER_KEYS),
+    frontmatter_keys_order: doc.frontmatter_keys_order,
     updated_at: now,
   };
 }
 
 export function chapterToFrontmatter(c: ChapterDocument): Record<string, unknown> {
   return {
+    ...(c.extra_frontmatter ?? {}),
     id: c.id,
     act_id: c.act_id,
     act_title: c.act_title,
@@ -147,12 +228,15 @@ export function parsedToEntity(relPath: string, doc: ParsedDocument): LoreEntity
     summary:
       body.split('\n').find((l) => l.trim() && !l.trim().startsWith('#'))?.trim() ?? '',
     body,
+    extra_frontmatter: pickExtraFrontmatter(fm, ENTITY_FRONTMATTER_KEYS),
+    frontmatter_keys_order: doc.frontmatter_keys_order,
     updated_at: now,
   };
 }
 
 export function entityToFrontmatter(e: LoreEntity): Record<string, unknown> {
   const fm: Record<string, unknown> = {
+    ...(e.extra_frontmatter ?? {}),
     id: e.id,
     type: e.entity_type,
     title: e.title,
@@ -233,6 +317,7 @@ export async function saveChapterToDisk(
     projectRoot,
     relativePath: chapter.file_path,
     frontmatter: chapterToFrontmatter(chapter),
+    orderedKeys: chapter.frontmatter_keys_order ?? null,
     body: chapter.paragraphs.join('\n\n'),
   });
   return res.ok ? { ok: true } : { ok: false, error: res.error };
@@ -246,6 +331,7 @@ export async function saveEntityToDisk(
     projectRoot,
     relativePath: entity.file_path,
     frontmatter: entityToFrontmatter(entity),
+    orderedKeys: entity.frontmatter_keys_order ?? null,
     body: entity.body,
   });
   return res.ok ? { ok: true } : { ok: false, error: res.error };
