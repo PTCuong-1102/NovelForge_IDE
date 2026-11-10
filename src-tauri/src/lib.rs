@@ -23,6 +23,8 @@ pub fn run() {
             linter_cmd::detect_implicit_entities,
             ai_cmd::mcp_execute_tool,
             ai_cmd::propose_inline_diff,
+            ai_cmd::list_edit_proposals,
+            ai_cmd::dismiss_edit_proposal,
             ai_cmd::search_lore_rag,
             vcs::snapshot::create_snapshot,
             vcs::snapshot::list_snapshots,

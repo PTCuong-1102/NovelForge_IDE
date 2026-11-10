@@ -9,11 +9,13 @@ import {
   Send,
   Play,
   CheckCircle,
+  Download,
 } from 'lucide-react';
 import { useAgentStore } from '@/stores/useAgentStore';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { isTauri, invokeSafe } from '@/lib/ipc';
+import type { InlineDiffProposal } from '@/lib/tauri-bridge';
 
 export const RightDock: React.FC = () => {
   const {
@@ -27,12 +29,17 @@ export const RightDock: React.FC = () => {
     sendComposerPrompt,
     mcpLogs,
     triggerMcpToolSimulation,
+    diffProposals,
+    addDiffProposal,
   } = useAgentStore();
 
   const { chapters, entities, rootPath, isDemoData } = useWorkspaceStore();
   const { activeChapterId, focusedParagraphIndex } = useEditorStore();
 
   const [promptInput, setPromptInput] = useState('');
+  const [proposalSyncMessage, setProposalSyncMessage] = useState<string | null>(
+    null
+  );
 
   const currentChapter =
     chapters.find((c) => c.id === activeChapterId) || chapters[0];
@@ -43,8 +50,83 @@ export const RightDock: React.FC = () => {
   // in the desktop build; otherwise buttons log clearly-labelled simulations.
   const canRunRealMcp = isTauri() && !!rootPath && !isDemoData;
 
-  const handleToolRun = async (
-    toolName:
+  // Maps a proposal file on disk (written by the MCP bridge or by the IDE) onto
+  // the inline diff the editor can review.
+  const toInlineDiffProposal = (
+    raw: Record<string, unknown>
+  ): InlineDiffProposal | null => {
+    const id = typeof raw.id === 'string' ? raw.id : '';
+    if (!id) return null;
+
+    const originalText =
+      typeof raw.original_text === 'string' ? raw.original_text : '';
+    const proposedText =
+      typeof raw.proposed_text === 'string'
+        ? raw.proposed_text
+        : typeof raw.new_content === 'string'
+        ? raw.new_content
+        : '';
+
+    let chapterId = typeof raw.chapter_id === 'string' ? raw.chapter_id : '';
+    let paragraphIndex =
+      typeof raw.paragraph_index === 'number' ? raw.paragraph_index : 0;
+
+    if (!chapterId && typeof raw.file_path === 'string') {
+      const chapter = chapters.find((c) => c.file_path === raw.file_path);
+      if (!chapter) return null;
+      chapterId = chapter.id;
+      const firstLine = originalText.split('\n')[0]?.trim() ?? '';
+      const found = firstLine
+        ? chapter.paragraphs.findIndex((p) => p.includes(firstLine))
+        : -1;
+      paragraphIndex = found >= 0 ? found : 0;
+    }
+    if (!chapterId) return null;
+
+    return {
+      id,
+      agent_name: 'NovelForge MCP (local)',
+      chapter_id: chapterId,
+      paragraph_index: paragraphIndex,
+      original_text: originalText,
+      proposed_text: proposedText,
+      rationale: typeof raw.rationale === 'string' ? raw.rationale : '',
+      created_at:
+        typeof raw.created_at === 'string'
+          ? raw.created_at
+          : new Date().toISOString(),
+      status: 'pending',
+    };
+  };
+
+  const handleSyncProposals = async () => {
+    if (!canRunRealMcp || !rootPath) return;
+    const res = await invokeSafe<Record<string, unknown>[]>(
+      'list_edit_proposals',
+      { projectRoot: rootPath }
+    );
+    if (!res.ok) {
+      setProposalSyncMessage(`Không đọc được đề xuất: ${res.error}`);
+      return;
+    }
+
+    const known = new Set(diffProposals.map((d) => d.id));
+    let loaded = 0;
+    for (const raw of res.data) {
+      const proposal = toInlineDiffProposal(raw);
+      if (!proposal || known.has(proposal.id)) continue;
+      known.add(proposal.id);
+      addDiffProposal(proposal);
+      loaded += 1;
+    }
+    setProposalSyncMessage(
+      loaded > 0
+        ? `Đã nạp ${loaded} đề xuất — duyệt trên trình soạn thảo (Tab để chấp nhận, Esc để từ chối).`
+        : 'Không có đề xuất mới trong .novelforge/proposals.'
+    );
+  };
+
+  const handleToolRun = async (    toolName:
       | 'novel_search_lore'
       | 'novel_get_chapter_context'
       | 'novel_check_continuity'
@@ -396,6 +478,19 @@ export const RightDock: React.FC = () => {
                 ? 'Đang kết nối MCP server cục bộ qua IPC (project thật trên đĩa).'
                 : 'Chế độ mô phỏng (SIM) — mở thư mục project trong bản desktop để gọi MCP thật qua IPC, hoặc dùng: novelforge-ide mcp [project_root].'}
             </div>
+            {canRunRealMcp && (
+              <button
+                onClick={handleSyncProposals}
+                className="w-full mt-2 px-2.5 py-1.5 rounded-lg border semantic-info-box text-[11px] font-semibold flex items-center justify-center gap-1.5"
+              >
+                <Download size={12} /> Đồng bộ đề xuất từ .novelforge/proposals
+              </button>
+            )}
+            {proposalSyncMessage && (
+              <p className="text-[11px] text-muted mt-1.5 leading-snug">
+                {proposalSyncMessage}
+              </p>
+            )}
             <p className="text-xs text-muted leading-relaxed">
               Cung cấp 4 công cụ chuẩn hóa cho Cline, Claude Desktop, Antigravity
               và OpenCode truy vấn trực tiếp vào bộ nhớ tiểu thuyết.

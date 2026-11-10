@@ -48,7 +48,10 @@ fn json_error(id: Option<Value>, code: i64, message: &str) -> Option<String> {
 }
 
 fn handle_message(root: &Path, line: &str) -> Option<String> {
-    let msg: Value = serde_json::from_str(line).ok()?;
+    let msg: Value = match serde_json::from_str(line) {
+        Ok(value) => value,
+        Err(_) => return json_error(Some(Value::Null), -32700, "Parse error"),
+    };
     let id = msg.get("id").cloned();
     let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
 
@@ -364,6 +367,7 @@ fn tool_check_continuity(root: &Path, args: &Value) -> Value {
     let chapter_date = record.map(|r| r.story_date.clone()).unwrap_or_else(|| "unknown".to_string());
 
     let paragraphs: Vec<String> = draft_text
+        .replace("\r\n", "\n")
         .split("\n\n")
         .map(|p| p.trim().trim_start_matches('#').trim().to_string())
         .filter(|p| !p.is_empty())
@@ -504,5 +508,50 @@ mod tests {
             }),
         );
         assert_eq!(allowed.get("status").and_then(|s| s.as_str()), Some("proposed"));
+    }
+
+    #[test]
+    fn malformed_json_returns_a_parse_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let response =
+            handle_message(dir.path(), "{bad json").expect("a JSON-RPC error response");
+        let parsed: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(
+            parsed
+                .get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(|c| c.as_i64()),
+            Some(-32700),
+            "a malformed request must answer with the JSON-RPC parse error code"
+        );
+    }
+
+    #[test]
+    fn check_continuity_splits_crlf_drafts_into_paragraphs() {
+        let dir = tempfile::tempdir().unwrap();
+        let chars = dir.path().join("lorebook").join("characters");
+        std::fs::create_dir_all(&chars).unwrap();
+        std::fs::write(
+            chars.join("khanh.md"),
+            "---\nid: char_khanh\ntype: character\ntitle: Chỉ huy Khánh\nstatus: dead\ndeath_chapter_order: 0\ndeath_chapter_title: Chương 1\n---\n\nHồ sơ.",
+        )
+        .unwrap();
+
+        let args = json!({
+            "draft_text": "Chỉ huy Khánh bước ra.\r\n\r\n[Hồi tưởng] Chỉ huy Khánh quay lại.",
+            "chapter_id": "ch_02"
+        });
+        let result = tool_check_continuity(dir.path(), &args);
+        let diagnostics = result
+            .get("diagnostics")
+            .and_then(|d| d.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        assert!(
+            diagnostics.iter().any(|d| d.get("rule_id").and_then(|r| r.as_str())
+                == Some("DEAD_CHARACTER")),
+            "a CRLF draft must be split into paragraphs before linting"
+        );
     }
 }

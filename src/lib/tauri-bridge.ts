@@ -88,7 +88,12 @@ export interface ContinuityIssue {
 
 export interface InlineDiffProposal {
   id: string;
-  agent_name: 'Cline' | 'Antigravity' | 'OpenCode' | 'Story Composer';
+  agent_name:
+    | 'Cline'
+    | 'Antigravity'
+    | 'OpenCode'
+    | 'Story Composer'
+    | 'NovelForge MCP (local)';
   chapter_id: string;
   paragraph_index: number;
   original_text: string;

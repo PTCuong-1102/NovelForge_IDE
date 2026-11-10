@@ -90,6 +90,67 @@ pub async fn propose_inline_diff(
 }
 
 #[tauri::command]
+pub async fn list_edit_proposals(project_root: String) -> Result<Vec<Value>, String> {
+    let dir = Path::new(&project_root)
+        .join(".novelforge")
+        .join("proposals");
+    let mut proposals = Vec::new();
+
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Ok(proposals);
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+            continue;
+        };
+        if value.get("status").and_then(|s| s.as_str()) != Some("proposed") {
+            continue;
+        }
+        proposals.push(value);
+    }
+
+    proposals.sort_by(|a, b| {
+        a.get("created_at")
+            .and_then(|c| c.as_str())
+            .unwrap_or("")
+            .cmp(b.get("created_at").and_then(|c| c.as_str()).unwrap_or(""))
+    });
+
+    Ok(proposals)
+}
+
+#[tauri::command]
+pub async fn dismiss_edit_proposal(
+    project_root: String,
+    proposal_id: String,
+) -> Result<(), String> {
+    let dir = Path::new(&project_root)
+        .join(".novelforge")
+        .join("proposals");
+    let path = dir.join(format!("{proposal_id}.json"));
+    if !path.exists() {
+        return Err(format!("Proposal not found: {proposal_id}"));
+    }
+
+    let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut value: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("status".to_string(), Value::String("resolved".to_string()));
+    }
+    std::fs::write(&path, value.to_string()).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn search_lore_rag(
     project_root: Option<String>,
     query: String,
