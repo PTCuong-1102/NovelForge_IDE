@@ -1,6 +1,35 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
 import type { CompiledManuscript } from './compile-manuscript';
 
+/**
+ * Splits Markdown inline marks (`**bold**`, `*italic*`) into DOCX text runs.
+ */
+function inlineRuns(text: string, italics = false): TextRun[] {
+  const runs: TextRun[] = [];
+  const base = { font: 'Times New Roman', size: 24 };
+  const tokenRegex = /(\*\*[^*]+\*\*|\*[^*\n]+\*)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      runs.push(new TextRun({ ...base, text: text.slice(lastIndex, match.index), italics }));
+    }
+    const token = match[0];
+    if (token.startsWith('**')) {
+      runs.push(new TextRun({ ...base, text: token.slice(2, -2), bold: true, italics }));
+    } else {
+      runs.push(new TextRun({ ...base, text: token.slice(1, -1), italics: true }));
+    }
+    lastIndex = tokenRegex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    runs.push(new TextRun({ ...base, text: text.slice(lastIndex), italics }));
+  }
+  return runs;
+}
+
 export async function buildDocx(compiled: CompiledManuscript): Promise<Blob> {
   const sections: Paragraph[] = [];
 
@@ -69,7 +98,7 @@ export async function buildDocx(compiled: CompiledManuscript): Promise<Blob> {
     for (const para of rawParagraphs) {
       const trimmed = para.trim();
       if (!trimmed) continue;
-      if (trimmed === '---') {
+      if (trimmed === '---' || trimmed === '***' || trimmed === '* * *') {
         sections.push(
           new Paragraph({
             text: '* * *',
@@ -79,15 +108,49 @@ export async function buildDocx(compiled: CompiledManuscript): Promise<Blob> {
         );
         continue;
       }
+      if (trimmed.startsWith('### ')) {
+        sections.push(
+          new Paragraph({
+            text: trimmed.slice(4).trim(),
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 240, after: 120 }
+          })
+        );
+        continue;
+      }
+      if (trimmed.startsWith('## ')) {
+        sections.push(
+          new Paragraph({
+            text: trimmed.slice(3).trim(),
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 240, after: 120 }
+          })
+        );
+        continue;
+      }
+      if (trimmed.startsWith('# ')) {
+        sections.push(
+          new Paragraph({
+            text: trimmed.slice(2).trim(),
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 240, after: 120 }
+          })
+        );
+        continue;
+      }
+      if (trimmed.startsWith('> ')) {
+        sections.push(
+          new Paragraph({
+            children: inlineRuns(trimmed.slice(2).trim(), true),
+            indent: { left: 720 },
+            spacing: { line: 360, before: 120, after: 120 }
+          })
+        );
+        continue;
+      }
       sections.push(
         new Paragraph({
-          children: [
-            new TextRun({
-              text: trimmed,
-              font: 'Times New Roman',
-              size: 24 // 12pt
-            })
-          ],
+          children: inlineRuns(trimmed),
           indent: { firstLine: 720 }, // 0.5 inch indent standard
           spacing: { line: 360, before: 120, after: 120 } // 1.5 line spacing
         })

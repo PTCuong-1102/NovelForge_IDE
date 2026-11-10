@@ -46,7 +46,27 @@ Cần thêm cảnh chiến đấu ở đây trước khi gửi cho biên tập.
     assert.strictEqual(markdownBlockToHtml('---'), '<hr />');
   });
 
-  await t.test('5. buildEpub generates valid EPUB 3 zip archive', async () => {
+  await t.test('5. markdownBlockToHtml renders scene breaks, blockquotes and inline marks', () => {
+    assert.strictEqual(markdownBlockToHtml('***'), '<hr />');
+    assert.strictEqual(
+      markdownBlockToHtml('> Lời trích dẫn cổ xưa'),
+      '<blockquote>Lời trích dẫn cổ xưa</blockquote>'
+    );
+    assert.strictEqual(
+      markdownBlockToHtml('Cô rút **súng lục** trong *đêm mưa*.'),
+      '<p>Cô rút <strong>súng lục</strong> trong <em>đêm mưa</em>.</p>'
+    );
+  });
+
+  await t.test('6. inline markup never lets a raw HTML tag through', () => {
+    const html = markdownBlockToHtml('Cô rút **<script>alert(1)</script>** trong *đêm*.');
+    assert.ok(!html.includes('<script>'));
+    assert.ok(html.includes('&lt;script&gt;'));
+    assert.ok(html.includes('<strong>'));
+    assert.ok(html.includes('<em>'));
+  });
+
+  await t.test('7. buildEpub generates valid EPUB 3 zip archive', async () => {
     const sample = compileManuscript({
       projectName: 'Thiên Địa Khởi Nguyên <script>',
       chapters: [
@@ -82,7 +102,7 @@ Cần thêm cảnh chiến đấu ở đây trước khi gửi cho biên tập.
     assert.ok(!opf.includes('<script>'));
   });
 
-  await t.test('6. buildDocx generates valid DOCX blob', async () => {
+  await t.test('8. buildDocx generates valid DOCX blob', async () => {
     const sample = compileManuscript({
       projectName: 'Huyết Cảng Tiền Truyện',
       chapters: [
@@ -107,5 +127,30 @@ Cần thêm cảnh chiến đấu ở đây trước khi gửi cho biên tập.
     assert.ok(docXml.includes('HUYẾT CẢNG TIỀN TRUYỆN'));
     assert.ok(docXml.includes('Chương Một'));
     assert.ok(docXml.includes('Đoạn văn mở màn'));
+  });
+
+  await t.test('9. buildDocx keeps scene breaks, headings and inline marks', async () => {
+    const marked = compileManuscript({
+      projectName: 'Dấu Nhấn',
+      chapters: [
+        {
+          id: 'c1',
+          title: 'Chương Một',
+          order: 1,
+          content:
+            'Cô rút **súng lục** trong *đêm mưa*.\n\n***\n\n## Cảnh 2\n\nĐoạn kết.'
+        }
+      ]
+    });
+
+    const blob = await buildDocx(marked);
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    const docXml = await zip.file('word/document.xml')!.async('string');
+
+    assert.ok(docXml.includes('<w:b/>'), 'bold runs must be emitted');
+    assert.ok(docXml.includes('<w:i/>'), 'italic runs must be emitted');
+    assert.ok(docXml.includes('* * *'), 'scene breaks must be emitted');
+    assert.ok(docXml.includes('Cảnh 2'), 'chapter headings must be emitted');
+    assert.ok(docXml.includes('súng lục'), 'bold text must be emitted');
   });
 });

@@ -20,12 +20,23 @@ export function stripAuthorNotes(markdown: string): string {
     .trim();
 }
 
+/**
+ * Renders inline Markdown marks (`**bold**`, `*italic*`) as HTML.
+ *
+ * The text must already be escaped: this only introduces the tags it owns.
+ */
+export function formatInlineMarkdownSafe(escapedText: string): string {
+  return escapedText
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+}
+
 export function markdownBlockToHtml(block: string): string {
   const trimmed = block.trim();
   if (!trimmed) {
     return '<p></p>';
   }
-  if (trimmed === '---') {
+  if (trimmed === '---' || trimmed === '***' || trimmed === '* * *') {
     return '<hr />';
   }
   if (trimmed.startsWith('# ')) {
@@ -37,8 +48,13 @@ export function markdownBlockToHtml(block: string): string {
   if (trimmed.startsWith('### ')) {
     return `<h3>${escapeHtml(trimmed.slice(4).trim())}</h3>`;
   }
+  if (trimmed.startsWith('> ')) {
+    return `<blockquote>${formatInlineMarkdownSafe(
+      escapeHtml(trimmed.slice(2).trim())
+    )}</blockquote>`;
+  }
   if (trimmed.startsWith('*') && trimmed.endsWith('*') && trimmed.length > 2) {
     return `<div class="meta">${escapeHtml(trimmed.slice(1, -1))}</div>`;
   }
-  return `<p>${escapeHtml(trimmed)}</p>`;
+  return `<p>${formatInlineMarkdownSafe(escapeHtml(trimmed))}</p>`;
 }
