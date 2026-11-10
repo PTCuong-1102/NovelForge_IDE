@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
   MapPin,
@@ -30,6 +30,19 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
   const [appearance, setAppearance] = useState(entity.appearance || '');
   const [personality, setPersonality] = useState(entity.personality || '');
   const [body, setBody] = useState(entity.body || '');
+
+  // Re-sync the form when the entity is replaced or renamed from the outside
+  // (tab switch, Refactor Rename) — a stale form would overwrite the new values.
+  useEffect(() => {
+    setTitle(entity.title);
+    setAliases(entity.aliases.join(', '));
+    setStatus(entity.status || 'alive');
+    setFaction(entity.faction || '');
+    setRole(entity.role || '');
+    setAppearance(entity.appearance || '');
+    setPersonality(entity.personality || '');
+    setBody(entity.body || '');
+  }, [entity.id, entity.updated_at]);
 
   const handleSave = () => {
     updateEntity(entity.id, {

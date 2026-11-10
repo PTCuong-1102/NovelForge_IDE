@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Edit3,
   Check,
@@ -30,6 +30,17 @@ export const RefactorRenameModal: React.FC = () => {
   const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(
     new Set()
   );
+
+  // Reset the form every time the modal is opened, for whichever entity is
+  // targeted — otherwise the previous entity's name and alias pairs leak in.
+  useEffect(() => {
+    if (!refactorModalOpen || !targetEntity) return;
+    setNewName(`${targetEntity.title} (Mới)`);
+    setAliasPairs(
+      (targetEntity.aliases || []).map((a) => ({ from: a, to: a }))
+    );
+    setSelectedMatchIds(new Set());
+  }, [refactorEntityId, refactorModalOpen, targetEntity]);
 
   if (!refactorModalOpen || !targetEntity) return null;
 

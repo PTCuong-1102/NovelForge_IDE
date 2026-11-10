@@ -108,6 +108,10 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const activeTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Tracks what the raw Markdown draft was last built from, so the draft is
+  // never rewritten while the user is typing in raw mode.
+  const previousChapterIdRef = useRef(chapter.id);
+  const previousCanvasModeRef = useRef<EditorCanvasMode | null>(null);
 
   const words = useMemo(
     () => countVietnameseAndLatinWords(chapter.paragraphs.join(' ')),
@@ -253,7 +257,12 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
         );
       }
     }
-    if (canvasMode === 'markdown') {
+    const chapterChanged = previousChapterIdRef.current !== chapter.id;
+    const enteredMarkdownMode =
+      previousCanvasModeRef.current !== 'markdown' && canvasMode === 'markdown';
+    previousChapterIdRef.current = chapter.id;
+    previousCanvasModeRef.current = canvasMode;
+    if (canvasMode === 'markdown' && (chapterChanged || enteredMarkdownMode)) {
       setRawMarkdownDraft(serializeChapterToLosslessMarkdown(chapter));
     }
   }, [chapter.id, chapter.paragraphs, tiptapEditor, canvasMode]);
