@@ -111,6 +111,13 @@ pub fn upsert_entity_record(conn: &Connection, record: &LoreEntityRecord) -> Res
     let metadata_json =
         serde_json::to_string(&record.metadata).unwrap_or_else(|_| "{}".to_string());
 
+    // A file whose frontmatter `id` changed must not keep the previous row:
+    // `file_path` is UNIQUE and would abort the insert.
+    conn.execute(
+        "DELETE FROM entities WHERE file_path = ?1 AND id != ?2",
+        params![record.file_path, record.id],
+    )?;
+
     conn.execute(
         "INSERT INTO entities (id, entity_type, title, aliases, file_path, metadata, content_hash, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP)

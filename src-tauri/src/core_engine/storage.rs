@@ -9,7 +9,7 @@ use crate::core_engine::parser::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,12 +145,25 @@ fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Extracts the lore profile fields the continuity linter compares against.
+pub fn lore_attributes(frontmatter: &HashMap<String, Value>) -> HashMap<String, String> {
+    let mut attributes = HashMap::new();
+    for key in ["appearance", "personality", "faction", "role"] {
+        if let Some(value) = frontmatter.get(key).and_then(|v| v.as_str()) {
+            if !value.trim().is_empty() {
+                attributes.insert(key.to_string(), value.to_string());
+            }
+        }
+    }
+    attributes
+}
+
 /// Scans `lorebook/` and `manuscript/` markdown files, synchronizing all entities,
 /// implicit entity mentions, and 768-dim `sqlite-vec` RAG embeddings into `.novelforge/index.sqlite`.
 pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSummary, String> {
     let layout = ensure_project_workspace(project_root)?;
     let db_path = Path::new(&layout.sqlite_db_path);
-    let conn = init_sqlite_db(db_path).map_err(|e| e.to_string())?;
+    let mut conn = init_sqlite_db(db_path).map_err(|e| e.to_string())?;
 
     let mut lore_files = Vec::new();
     collect_markdown_files(Path::new(&layout.lorebook_dir), &mut lore_files);
@@ -163,6 +176,11 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
     let mut mentions_recorded = 0usize;
     let mut rag_chunks_indexed = 0usize;
     let mut character_specs = Vec::new();
+    let mut seen_entity_ids: HashSet<String> = HashSet::new();
+    let mut seen_file_paths: HashSet<String> = HashSet::new();
+
+    // The whole sync runs in one transaction: a failed scan never leaves a half-written index.
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // 1. Index Lorebook files (`characters/`, `locations/`, `items/`)
     for file_path in &lore_files {
@@ -225,6 +243,9 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
             })
             .unwrap_or_default();
 
+        seen_entity_ids.insert(id.clone());
+        seen_file_paths.insert(rel_path.clone());
+
         let record = LoreEntityRecord {
             id: id.clone(),
             entity_type: entity_type.clone(),
@@ -236,7 +257,7 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
 
-        upsert_entity_record(&conn, &record).map_err(|e| e.to_string())?;
+        upsert_entity_record(&tx, &record).map_err(|e| e.to_string())?;
         entities_indexed += 1;
 
         // Index into `sqlite-vec` RAG store
@@ -246,7 +267,7 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
             parsed.body.clone()
         };
         upsert_rag_chunk(
-            &conn,
+            &tx,
             &format!("chunk_{}", id),
             &id,
             &title,
@@ -282,7 +303,7 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
                 .get("death_chapter_title")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
-            attributes: HashMap::new(),
+            attributes: lore_attributes(&parsed.frontmatter),
         });
     }
 
@@ -319,6 +340,9 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
             .or_else(|| parsed.headings.first().cloned())
             .unwrap_or_else(|| chapter_id.clone());
 
+        seen_entity_ids.insert(chapter_id.clone());
+        seen_file_paths.insert(rel_path.clone());
+
         let record = LoreEntityRecord {
             id: chapter_id.clone(),
             entity_type: "chapter".to_string(),
@@ -330,7 +354,7 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
 
-        upsert_entity_record(&conn, &record).map_err(|e| e.to_string())?;
+        upsert_entity_record(&tx, &record).map_err(|e| e.to_string())?;
         chapters_indexed += 1;
 
         let spans = scan_implicit_entities(&parsed.paragraphs, &character_specs);
@@ -350,10 +374,36 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
             })
             .collect();
 
-        replace_chapter_entity_mentions(&conn, &chapter_id, &mention_records)
+        replace_chapter_entity_mentions(&tx, &chapter_id, &mention_records)
             .map_err(|e| e.to_string())?;
         mentions_recorded += mention_records.len();
     }
+
+    // 3. Prune rows whose source file disappeared from disk (or was renamed).
+    let stale_rows: Vec<(String, String)> = {
+        let mut stmt = tx
+            .prepare("SELECT id, file_path FROM entities")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.flatten()
+            .filter(|(id, file_path)| {
+                !seen_entity_ids.contains(id) || !seen_file_paths.contains(file_path)
+            })
+            .collect()
+    };
+    for (id, _) in stale_rows {
+        tx.execute("DELETE FROM entities WHERE id = ?1", rusqlite::params![&id])
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM lore_embeddings_store WHERE entity_id = ?1",
+            rusqlite::params![&id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok(WorkspaceSyncSummary {
         entities_indexed,
@@ -402,6 +452,64 @@ mod tests {
             hits.iter().any(|h| h.entity_id == "char_linh_001"),
             "hybrid search must surface the seeded character, got: {hits:?}"
         );
+    }
+
+    #[test]
+    fn sync_handles_id_change_and_prunes_deleted_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let chars = root.join("lorebook/characters");
+        fs::create_dir_all(&chars).unwrap();
+
+        fs::write(
+            chars.join("linh.md"),
+            "---\nid: char_v1\ntitle: Linh\n---\nBody",
+        )
+        .unwrap();
+        fs::write(
+            chars.join("temp.md"),
+            "---\nid: char_temp\ntitle: Temp\n---\nBody",
+        )
+        .unwrap();
+
+        let s1 = sync_workspace_to_sqlite(root).unwrap();
+        assert_eq!(s1.entities_indexed, 2);
+
+        // The entity id changes and the second file disappears from disk.
+        fs::write(
+            chars.join("linh.md"),
+            "---\nid: char_v2\ntitle: Linh\n---\nBody",
+        )
+        .unwrap();
+        fs::remove_file(chars.join("temp.md")).unwrap();
+
+        let s2 = sync_workspace_to_sqlite(root).unwrap();
+        assert_eq!(s2.entities_indexed, 1);
+
+        let db = root.join(".novelforge").join("index.sqlite");
+        let conn = init_sqlite_db(&db).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM entities", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "orphaned entity rows must be pruned");
+    }
+
+    #[test]
+    fn lore_attributes_carry_the_lore_profile_into_the_linter() {
+        let raw = "---\nid: char_linh\ntype: character\ntitle: Lâm Vũ Linh\nappearance: Tóc ngắn ngang vai\npersonality: Lạnh lùng\nfaction: Aegis\nrole: Đặc vụ\n---\n\nBody";
+        let parsed = parse_markdown_with_frontmatter(raw);
+        let attributes = lore_attributes(&parsed.frontmatter);
+
+        assert_eq!(
+            attributes.get("appearance").map(|s| s.as_str()),
+            Some("Tóc ngắn ngang vai")
+        );
+        assert_eq!(
+            attributes.get("personality").map(|s| s.as_str()),
+            Some("Lạnh lùng")
+        );
+        assert_eq!(attributes.get("faction").map(|s| s.as_str()), Some("Aegis"));
+        assert_eq!(attributes.get("role").map(|s| s.as_str()), Some("Đặc vụ"));
     }
 }
 

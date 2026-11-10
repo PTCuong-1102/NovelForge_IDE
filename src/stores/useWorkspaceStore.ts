@@ -197,6 +197,7 @@ const persistChapter = (chapterId: string) => {
           ? prev.ipcNotice
           : prev.ipcNotice ?? `Không lưu được ${ch.file_path}: ${res.error ?? 'unknown error'}`,
       }));
+      if (res.ok) scheduleSqliteSync();
     });
   });
 };
@@ -216,7 +217,9 @@ const persistEntity = (entityId: string) => {
             prev.ipcNotice ??
             `Không lưu được ${entity.file_path}: ${res.error ?? 'unknown error'}`,
         }));
+        return;
       }
+      scheduleSqliteSync();
     });
   });
 };
@@ -230,6 +233,22 @@ const persistAllChapters = () => {
 const canWriteToDisk = (s: WorkspaceState): boolean =>
   isTauri() && !s.isDemoData && Boolean(s.rootPath);
 
+// --- SQLite index sync (debounced; only for real desktop projects) ---
+let sqliteSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Rebuilds `.novelforge/index.sqlite` shortly after a file was written. */
+const scheduleSqliteSync = () => {
+  if (!getStateRef) return;
+  const s = getStateRef();
+  if (!canWriteToDisk(s) || !s.rootPath) return;
+  const projectRoot = s.rootPath;
+  if (sqliteSyncTimer) clearTimeout(sqliteSyncTimer);
+  sqliteSyncTimer = setTimeout(() => {
+    sqliteSyncTimer = null;
+    void invokeSafe('sync_project_sqlite', { projectRoot });
+  }, 2500);
+};
+
 const flushChapterSave = async (chapterId: string): Promise<boolean> => {
   const pending = chapterSaveTimers.get(chapterId);
   if (!pending) return true;
@@ -241,7 +260,10 @@ const flushChapterSave = async (chapterId: string): Promise<boolean> => {
   if (!ch || !cur.rootPath || !canWriteToDisk(cur)) return true;
 
   const res = await saveChapterToDisk(cur.rootPath, ch);
-  if (res.ok) return true;
+  if (res.ok) {
+    scheduleSqliteSync();
+    return true;
+  }
   useWorkspaceStore.setState((prev) => ({
     saveStatus: 'unsaved',
     ipcNotice:
@@ -262,7 +284,10 @@ const flushEntitySave = async (entityId: string): Promise<boolean> => {
   if (!entity || !cur.rootPath || !canWriteToDisk(cur)) return true;
 
   const res = await saveEntityToDisk(cur.rootPath, entity);
-  if (res.ok) return true;
+  if (res.ok) {
+    scheduleSqliteSync();
+    return true;
+  }
   useWorkspaceStore.setState((prev) => ({
     saveStatus: 'unsaved',
     ipcNotice:

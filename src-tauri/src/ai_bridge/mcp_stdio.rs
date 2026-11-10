@@ -12,7 +12,6 @@ use crate::core_engine::linter::{check_chapter_continuity, LoreCharacterSpec};
 use crate::core_engine::parser::parse_markdown_with_frontmatter;
 use crate::core_engine::paths::canonical_within;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -329,12 +328,7 @@ fn load_character_specs(root: &Path) -> Vec<LoreCharacterSpec> {
             .get("death_chapter_title")
             .and_then(|v| v.as_str())
             .map(str::to_string);
-        let mut attributes = HashMap::new();
-        for key in ["appearance", "personality", "faction", "role"] {
-            if let Some(v) = fm.get(key).and_then(|v| v.as_str()) {
-                attributes.insert(key.to_string(), v.to_string());
-            }
-        }
+        let attributes = crate::core_engine::storage::lore_attributes(fm);
         specs.push(LoreCharacterSpec {
             id: fm
                 .get("id")
