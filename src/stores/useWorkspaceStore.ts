@@ -326,9 +326,46 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       toggleSplitView: () =>
         set((state) => {
           const nextSplit = !state.splitView;
+          if (!nextSplit) {
+            return { splitView: false };
+          }
+
+          const existingSecondary = state.openTabs.find(
+            (t) => t.pane === 'secondary'
+          );
+          if (existingSecondary) {
+            return {
+              splitView: true,
+              activeSecondaryTabId: existingSecondary.id,
+            };
+          }
+
+          // Split the second open tab into the right pane.
+          const second = state.openTabs.find(
+            (t) => t.pane === 'primary' && t.id !== state.activePrimaryTabId
+          );
+          if (second) {
+            return {
+              splitView: true,
+              openTabs: state.openTabs.map((t) =>
+                t.id === second.id ? { ...t, pane: 'secondary' as const } : t
+              ),
+              activeSecondaryTabId: second.id,
+            };
+          }
+
+          // Nothing to split: open the lore database in the right pane.
+          const loreTab: OpenWorkbenchTab = {
+            id: 'tab-lore-db',
+            title: 'Lorebook Database',
+            type: 'lore-database',
+            targetId: 'lore-all',
+            pane: 'secondary',
+          };
           return {
-            splitView: nextSplit,
-            activeSecondaryTabId: state.activeSecondaryTabId || 'tab-lore-db',
+            splitView: true,
+            openTabs: [...state.openTabs, loreTab],
+            activeSecondaryTabId: loreTab.id,
           };
         }),
 
@@ -364,9 +401,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (nextPrimary === tabId) {
             nextPrimary = filtered[0]?.id || '';
           }
+          const nextSecondary =
+            state.activeSecondaryTabId === tabId
+              ? filtered.find((t) => t.pane === 'secondary')?.id ??
+                filtered[0]?.id ??
+                null
+              : state.activeSecondaryTabId;
           return {
             openTabs: filtered,
             activePrimaryTabId: nextPrimary,
+            activeSecondaryTabId: nextSecondary,
           };
         }),
 
@@ -421,16 +465,27 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       createChapter: (title) => {
         const state = get();
-        const nextOrder =
+        const usedIds = new Set(state.chapters.map((c) => c.id));
+        const usedPaths = new Set(state.chapters.map((c) => c.file_path));
+        const pad = (n: number) => String(n).padStart(2, '0');
+        // Pick the first free slot: both the id and the file path must be unused.
+        let n =
           state.chapters.reduce((max, c) => Math.max(max, c.order), 0) + 1;
-        const newId = `ch_${String(nextOrder).padStart(2, '0')}`;
+        while (
+          usedIds.has(`ch_${pad(n)}`) ||
+          usedPaths.has(`manuscript/act-01/ch-${pad(n)}.md`)
+        ) {
+          n += 1;
+        }
+        const nextOrder = n;
+        const newId = `ch_${pad(nextOrder)}`;
         const newChapter: ChapterDocument = {
           id: newId,
           act_id: 'act_01',
           act_title: 'Hồi 1',
           order: nextOrder,
           title: title || `Chương ${nextOrder}: Phân Cảnh Mới`,
-          file_path: `manuscript/act-01/ch-${String(nextOrder).padStart(2, '0')}.md`,
+          file_path: `manuscript/act-01/ch-${pad(nextOrder)}.md`,
           status: 'draft',
           pov_character_id: '',
           pov_character_name: '',
@@ -467,8 +522,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set((state) => {
           const next = [...state.chapters];
           const [moved] = next.splice(fromIndex, 1);
+          if (!moved) return state;
           next.splice(toIndex, 0, moved);
-          return { chapters: next };
+          return { chapters: next.map((ch, idx) => ({ ...ch, order: idx + 1 })) };
         });
         persistAllChapters();
       },

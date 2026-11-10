@@ -3,6 +3,31 @@ import assert from 'node:assert/strict';
 import { isTauri, invokeSafe, assertIpcAvailable } from '../ipc';
 import { useWorkspaceStore } from './helpers/workspace-store';
 import { workspacePartialize } from '@/stores/useWorkspaceStore';
+import type { ChapterDocument } from '@/lib/tauri-bridge';
+
+const makeChapter = (
+  id: string,
+  order: number,
+  filePath: string
+): ChapterDocument => ({
+  id,
+  act_id: 'act_01',
+  act_title: 'Hồi 1',
+  order,
+  title: `Chương ${order}`,
+  file_path: filePath,
+  status: 'draft',
+  pov_character_id: '',
+  pov_character_name: '',
+  story_date: '',
+  story_year: 2026,
+  location_id: '',
+  location_tag: '',
+  target_words: 1000,
+  is_flashback: false,
+  paragraphs: ['Nội dung chương.'],
+  updated_at: '',
+});
 
 test('Tauri IPC Safe Bridge & Browser Fallback Tests', async (t) => {
   await t.test('1. isTauri() returns false in node / non-Tauri browser environment', () => {
@@ -115,5 +140,111 @@ test('Workspace store disk-save flush behaviour', async (t) => {
     assert.deepEqual(parsed.state.chapters, []);
     assert.deepEqual(parsed.state.entities, []);
     assert.equal(parsed.state.rootPath, '/tmp/my-novel');
+  });
+
+  await t.test('8. reorderChapters rewrites the order field of every chapter', () => {
+    useWorkspaceStore.setState({
+      chapters: [
+        makeChapter('ch_01', 1, 'manuscript/act-01/ch-01.md'),
+        makeChapter('ch_02', 2, 'manuscript/act-01/ch-02.md'),
+        makeChapter('ch_03', 3, 'manuscript/act-01/ch-03.md'),
+      ],
+      openTabs: [],
+    });
+
+    useWorkspaceStore.getState().reorderChapters(2, 0);
+    const after = useWorkspaceStore.getState().chapters;
+    assert.deepEqual(
+      after.map((c) => c.id),
+      ['ch_03', 'ch_01', 'ch_02']
+    );
+    assert.deepEqual(
+      after.map((c) => c.order),
+      [1, 2, 3],
+      'the order field must follow the new sequence'
+    );
+  });
+
+  await t.test('9. createChapter never reuses an existing id or file path', () => {
+    useWorkspaceStore.setState({
+      chapters: [
+        makeChapter('ch_01', 1, 'manuscript/act-01/ch-01.md'),
+        makeChapter('ch_02', 1, 'manuscript/act-01/ch-02.md'),
+      ],
+      openTabs: [],
+    });
+
+    useWorkspaceStore.getState().createChapter('Chương mới');
+    const chapters = useWorkspaceStore.getState().chapters;
+    assert.equal(chapters.length, 3);
+    const ids = chapters.map((c) => c.id);
+    const paths = chapters.map((c) => c.file_path);
+    assert.equal(new Set(ids).size, ids.length, 'chapter ids must be unique');
+    assert.equal(
+      new Set(paths).size,
+      paths.length,
+      'chapter file paths must be unique'
+    );
+  });
+
+  await t.test('10. closing the active secondary tab moves the secondary selection', () => {
+    useWorkspaceStore.setState({
+      openTabs: [
+        {
+          id: 'tab-a',
+          title: 'A',
+          type: 'chapter',
+          targetId: 'ch_01',
+          pane: 'primary',
+        },
+        {
+          id: 'tab-b',
+          title: 'B',
+          type: 'lore-entity',
+          targetId: 'ch_01',
+          pane: 'secondary',
+        },
+      ],
+      activePrimaryTabId: 'tab-a',
+      activeSecondaryTabId: 'tab-b',
+    });
+
+    useWorkspaceStore.getState().closeTab('tab-b');
+    const state = useWorkspaceStore.getState();
+    assert.notStrictEqual(state.activeSecondaryTabId, 'tab-b');
+    assert.ok(
+      state.activeSecondaryTabId === null ||
+        state.openTabs.some((t) => t.id === state.activeSecondaryTabId),
+      'the secondary selection must point at a tab that still exists'
+    );
+  });
+
+  await t.test('11. enabling split view always selects an existing tab', () => {
+    useWorkspaceStore.setState({
+      openTabs: [
+        {
+          id: 'tab-a',
+          title: 'A',
+          type: 'chapter',
+          targetId: 'ch_01',
+          pane: 'primary',
+        },
+      ],
+      activePrimaryTabId: 'tab-a',
+      activeSecondaryTabId: null,
+      splitView: false,
+    });
+
+    useWorkspaceStore.getState().toggleSplitView();
+    const state = useWorkspaceStore.getState();
+    assert.ok(state.splitView, 'split view must be enabled');
+    assert.ok(
+      state.activeSecondaryTabId,
+      'split view must have a secondary tab selected'
+    );
+    assert.ok(
+      state.openTabs.some((t) => t.id === state.activeSecondaryTabId),
+      'the secondary selection must exist in openTabs'
+    );
   });
 });

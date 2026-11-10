@@ -85,4 +85,20 @@ describe('Simulation labelling & hardcoded demo data guard tests', () => {
       'Sidebar must label the branch selector as a simulation'
     );
   });
+
+  it('7. The explorer groups chapters by their real act instead of a fixed one', () => {
+    const code = read('src/components/workbench/Sidebar.tsx');
+    assert(
+      !code.includes('Hồi 1: Tín Hiệu Từ Đáy Biển'),
+      'Sidebar must not hardcode a demo act title'
+    );
+    assert(
+      /actGroups\s*=\s*useMemo/.test(code),
+      'Sidebar must group chapters by act with useMemo'
+    );
+    assert(
+      /allIssues\s*=\s*useMemo/.test(code),
+      'Sidebar must memoise the project-wide linter run'
+    );
+  });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   FileText,
   Folder,
@@ -22,6 +22,7 @@ import { useEditorStore } from '@/stores/useEditorStore';
 import {
   countVietnameseAndLatinWords,
   runContinuityLinterEngine,
+  type ChapterDocument,
 } from '@/lib/tauri-bridge';
 
 export const Sidebar: React.FC = () => {
@@ -50,9 +51,7 @@ export const Sidebar: React.FC = () => {
     setFocusedParagraphIndex,
   } = useEditorStore();
 
-  const [expandedActs, setExpandedActs] = useState<Record<string, boolean>>({
-    act_01: true,
-  });
+  const [expandedActs, setExpandedActs] = useState<Record<string, boolean>>({});
   const [expandedLoreTypes, setExpandedLoreTypes] = useState<
     Record<string, boolean>
   >({
@@ -65,7 +64,10 @@ export const Sidebar: React.FC = () => {
   const [showNewBranchInput, setShowNewBranchInput] = useState(false);
 
   const toggleAct = (actId: string) => {
-    setExpandedActs((prev) => ({ ...prev, [actId]: !prev[actId] }));
+    setExpandedActs((prev) => ({
+      ...prev,
+      [actId]: !(prev[actId] ?? true),
+    }));
   };
 
   const toggleLoreGroup = (type: string) => {
@@ -73,9 +75,31 @@ export const Sidebar: React.FC = () => {
   };
 
   // Compile linter issues across all chapters
-  const allIssues = chapters.flatMap((ch) =>
-    runContinuityLinterEngine(ch, entities, ignoredIssueIds)
+  const allIssues = useMemo(
+    () =>
+      chapters.flatMap((ch) =>
+        runContinuityLinterEngine(ch, entities, ignoredIssueIds)
+      ),
+    [chapters, entities, ignoredIssueIds]
   );
+
+  // Group chapters by their act so the explorer follows the project structure
+  const actGroups = useMemo(() => {
+    const groups = new Map<string, { title: string; chapters: ChapterDocument[] }>();
+    for (const ch of chapters) {
+      const actId = ch.act_id || 'act_01';
+      const group = groups.get(actId);
+      if (group) {
+        group.chapters.push(ch);
+      } else {
+        groups.set(actId, {
+          title: ch.act_title || ch.act_id || 'Bản thảo',
+          chapters: [ch],
+        });
+      }
+    }
+    return Array.from(groups.entries());
+  }, [chapters]);
 
   return (
     <div
@@ -105,68 +129,73 @@ export const Sidebar: React.FC = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto p-2.5">
-            {/* Act group */}
-            <div className="mb-2">
-              <div
-                onClick={() => toggleAct('act_01')}
-                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-elevated text-xs font-bold text-primary"
-              >
-                {expandedActs['act_01'] ? (
-                  <ChevronDown size={14} className="text-muted" />
-                ) : (
-                  <ChevronRight size={14} className="text-muted" />
-                )}
-                {expandedActs['act_01'] ? (
-                  <FolderOpen size={15} className="semantic-warning-text" />
-                ) : (
-                  <Folder size={15} className="semantic-warning-text" />
-                )}
-                <span>Hồi 1: Tín Hiệu Từ Đáy Biển</span>
-              </div>
+            {/* Act groups */}
+            {actGroups.map(([actId, group]) => {
+              const expanded = expandedActs[actId] ?? true;
+              return (
+                <div key={actId} className="mb-2">
+                  <div
+                    onClick={() => toggleAct(actId)}
+                    className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-elevated text-xs font-bold text-primary"
+                  >
+                    {expanded ? (
+                      <ChevronDown size={14} className="text-muted" />
+                    ) : (
+                      <ChevronRight size={14} className="text-muted" />
+                    )}
+                    {expanded ? (
+                      <FolderOpen size={15} className="semantic-warning-text" />
+                    ) : (
+                      <Folder size={15} className="semantic-warning-text" />
+                    )}
+                    <span className="truncate">{group.title}</span>
+                  </div>
 
-              {expandedActs['act_01'] && (
-                <div className="ml-4 pl-2 border-l border-border flex flex-col gap-1 mt-1">
-                  {chapters.map((ch) => {
-                    const words = countVietnameseAndLatinWords(
-                      ch.paragraphs.join(' ')
-                    );
-                    const isCurrent = ch.id === activeChapterId;
-                    return (
-                      <div
-                        key={ch.id}
-                        onClick={() => {
-                          setActiveChapterId(ch.id);
-                          openTab({
-                            id: `tab-${ch.id}`,
-                            title: ch.title,
-                            type: 'chapter',
-                            targetId: ch.id,
-                          });
-                        }}
-                        className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                          isCurrent
-                            ? 'bg-elevated font-semibold text-primary border border-border'
-                            : 'hover:bg-elevated/60 text-primary'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 truncate">
-                          <FileText
-                            size={14}
-                            className={`shrink-0 ${
-                              isCurrent ? 'text-accent' : 'text-muted'
+                  {expanded && (
+                    <div className="ml-4 pl-2 border-l border-border flex flex-col gap-1 mt-1">
+                      {group.chapters.map((ch) => {
+                        const words = countVietnameseAndLatinWords(
+                          ch.paragraphs.join(' ')
+                        );
+                        const isCurrent = ch.id === activeChapterId;
+                        return (
+                          <div
+                            key={ch.id}
+                            onClick={() => {
+                              setActiveChapterId(ch.id);
+                              openTab({
+                                id: `tab-${ch.id}`,
+                                title: ch.title,
+                                type: 'chapter',
+                                targetId: ch.id,
+                              });
+                            }}
+                            className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                              isCurrent
+                                ? 'bg-elevated font-semibold text-primary border border-border'
+                                : 'hover:bg-elevated/60 text-primary'
                             }`}
-                          />
-                          <span className="truncate text-xs">{ch.title}</span>
-                        </div>
-                        <span className="text-[11px] font-mono text-muted ml-2 shrink-0">
-                          {words} từ
-                        </span>
-                      </div>
-                    );
-                  })}
+                          >
+                            <div className="flex items-center gap-1.5 truncate">
+                              <FileText
+                                size={14}
+                                className={`shrink-0 ${
+                                  isCurrent ? 'text-accent' : 'text-muted'
+                                }`}
+                              />
+                              <span className="truncate text-xs">{ch.title}</span>
+                            </div>
+                            <span className="text-[11px] font-mono text-muted ml-2 shrink-0">
+                              {words} từ
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })}
 
             {/* Quick Lorebook database link */}
             <div
