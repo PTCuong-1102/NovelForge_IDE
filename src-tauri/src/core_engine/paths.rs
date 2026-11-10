@@ -28,6 +28,15 @@ pub fn canonical_within(root: &Path, candidate: &Path) -> Result<PathBuf, FsErro
         .canonicalize()
         .map_err(|e| FsError::Io(format!("Invalid root: {}", e)))?;
 
+    // The git internals of a project are never a valid write target.
+    for comp in candidate.components() {
+        if let Component::Normal(os) = comp {
+            if os.to_string_lossy().eq_ignore_ascii_case(".git") {
+                return Err(FsError::OutsideProjectRoot);
+            }
+        }
+    }
+
     // Combine candidate if relative, or inspect if absolute
     let target = if candidate.is_absolute() {
         candidate.to_path_buf()
@@ -51,26 +60,39 @@ pub fn canonical_within(root: &Path, candidate: &Path) -> Result<PathBuf, FsErro
         }
     }
 
-    // If file exists, canonicalize target; if not, canonicalize parent and re-append filename
+    // If file exists, canonicalize target; if not, resolve the nearest existing
+    // ancestor and re-attach the missing tail (a symlinked parent must not escape).
     let final_path = if normalized.exists() {
         normalized
             .canonicalize()
             .map_err(|e| FsError::Io(e.to_string()))?
     } else {
-        let parent = normalized
-            .parent()
-            .ok_or(FsError::OutsideProjectRoot)?;
-        if parent.exists() {
-            let canon_parent = parent
-                .canonicalize()
-                .map_err(|e| FsError::Io(e.to_string()))?;
-            let file_name = normalized
-                .file_name()
-                .ok_or(FsError::OutsideProjectRoot)?;
-            canon_parent.join(file_name)
-        } else {
-            normalized
+        let mut tail: Vec<std::ffi::OsString> = Vec::new();
+        if let Some(name) = normalized.file_name() {
+            tail.push(name.to_os_string());
         }
+        let mut current = normalized.parent();
+        let mut resolved: Option<PathBuf> = None;
+        while let Some(dir) = current {
+            match dir.canonicalize() {
+                Ok(canon) => {
+                    resolved = Some(canon);
+                    break;
+                }
+                Err(_) => {
+                    let Some(name) = dir.file_name() else {
+                        break;
+                    };
+                    tail.push(name.to_os_string());
+                    current = dir.parent();
+                }
+            }
+        }
+        let mut out = resolved.ok_or(FsError::OutsideProjectRoot)?;
+        for part in tail.iter().rev() {
+            out.push(part);
+        }
+        out
     };
 
     // Verify final path starts with canonical root
@@ -109,5 +131,38 @@ mod tests {
         assert_eq!(res, Err(FsError::OutsideProjectRoot));
 
         let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn test_rejects_dot_git_directory_access() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(temp.path().join(".git/hooks")).unwrap();
+
+        let res = canonical_within(temp.path(), Path::new(".git/hooks/pre-commit"));
+        assert_eq!(res, Err(FsError::OutsideProjectRoot));
+
+        let res = canonical_within(temp.path(), Path::new(".git"));
+        assert_eq!(res, Err(FsError::OutsideProjectRoot));
+    }
+
+    #[test]
+    fn test_rejects_symlinked_parent_for_missing_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), temp.path().join("link")).unwrap();
+
+        // The file does not exist yet, but its parent is a symlink out of the root.
+        let res = canonical_within(temp.path(), Path::new("link/sub/new-file.md"));
+        assert_eq!(res, Err(FsError::OutsideProjectRoot));
+    }
+
+    #[test]
+    fn test_accepts_missing_file_under_missing_directory_inside_root() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("manuscript")).unwrap();
+
+        let res = canonical_within(temp.path(), Path::new("manuscript/act-99/ch-99.md"));
+        assert!(res.is_ok(), "expected Ok, got {:?}", res.err());
+        assert!(res.unwrap().ends_with("manuscript/act-99/ch-99.md"));
     }
 }

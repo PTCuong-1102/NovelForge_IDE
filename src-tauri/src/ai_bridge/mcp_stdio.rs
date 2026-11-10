@@ -416,6 +416,20 @@ fn tool_propose_edit(root: &Path, args: &Value) -> Value {
         Ok(p) => p,
         Err(e) => return json!({ "error": format!("Path rejected: {e}") }),
     };
+
+    // Proposals are only allowed for manuscript/lorebook markdown files.
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let rel = match safe_path.strip_prefix(&canonical_root) {
+        Ok(p) => p.to_path_buf(),
+        Err(_) => return json!({ "error": format!("Path rejected: {file_rel} is outside the project root") }),
+    };
+    let rel_str = rel.to_string_lossy().replace('\\', "/");
+    if !(rel_str.starts_with("manuscript/") || rel_str.starts_with("lorebook/"))
+        || !rel_str.ends_with(".md")
+    {
+        return json!({ "error": "novel_propose_edit only permits markdown files under manuscript/ or lorebook/" });
+    }
+
     let original = match fs::read_to_string(&safe_path) {
         Ok(c) => c,
         Err(e) => return json!({ "error": format!("Cannot read {file_rel}: {e}") }),
@@ -427,11 +441,6 @@ fn tool_propose_edit(root: &Path, args: &Value) -> Value {
     }
     let end = end_line.min(lines.len());
     let original_text = lines[start_line - 1..end].join("\n");
-
-    let rel = safe_path
-        .strip_prefix(root)
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|_| safe_path.clone());
 
     let proposal_id = format!(
         "prop-{}",
@@ -468,4 +477,38 @@ fn tool_propose_edit(root: &Path, args: &Value) -> Value {
         },
         "note": "Proposal stored under .novelforge/proposals/. Apply it manually or via the IDE; the file was NOT modified.",
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn propose_edit_only_accepts_manuscript_and_lorebook_markdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("manuscript/act-01")).unwrap();
+        std::fs::write(root.join("notes.txt"), "secret\n").unwrap();
+        std::fs::write(root.join("manuscript/act-01/ch-01.md"), "Dong\n").unwrap();
+
+        let outside = tool_propose_edit(
+            root,
+            &json!({ "file_path": "notes.txt", "start_line": 1, "end_line": 1, "new_content": "x" }),
+        );
+        assert_eq!(
+            outside.get("error").and_then(|e| e.as_str()),
+            Some("novel_propose_edit only permits markdown files under manuscript/ or lorebook/")
+        );
+
+        let allowed = tool_propose_edit(
+            root,
+            &json!({
+                "file_path": "manuscript/act-01/ch-01.md",
+                "start_line": 1,
+                "end_line": 1,
+                "new_content": "Dong moi"
+            }),
+        );
+        assert_eq!(allowed.get("status").and_then(|s| s.as_str()), Some("proposed"));
+    }
 }
