@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isTauri, invokeSafe, assertIpcAvailable } from '../ipc';
 import { useWorkspaceStore } from './helpers/workspace-store';
+import { workspacePartialize } from '@/stores/useWorkspaceStore';
 
 test('Tauri IPC Safe Bridge & Browser Fallback Tests', async (t) => {
   await t.test('1. isTauri() returns false in node / non-Tauri browser environment', () => {
@@ -73,5 +74,46 @@ test('Workspace store disk-save flush behaviour', async (t) => {
     } finally {
       useWorkspaceStore.setState({ flushAllSaves: original });
     }
+  });
+
+  await t.test('5. partialize drops chapters/entities for a disk-backed project', () => {
+    useWorkspaceStore.getState().loadDemoProject();
+    const state = {
+      ...useWorkspaceStore.getState(),
+      isDemoData: false,
+      rootPath: '/tmp/my-novel',
+    };
+    assert.ok(state.chapters.length > 0, 'fixture needs at least one chapter');
+
+    const persisted = workspacePartialize(state);
+    assert.deepEqual(persisted.chapters, []);
+    assert.deepEqual(persisted.entities, []);
+    assert.deepEqual(persisted.relations, []);
+    assert.deepEqual(persisted.snapshots, []);
+    assert.equal(persisted.rootPath, '/tmp/my-novel');
+  });
+
+  await t.test('6. partialize keeps demo chapters/entities', () => {
+    useWorkspaceStore.getState().loadDemoProject();
+    const state = {
+      ...useWorkspaceStore.getState(),
+      isDemoData: true,
+      rootPath: null,
+    };
+    const persisted = workspacePartialize(state);
+    assert.ok(persisted.chapters.length > 0);
+    assert.ok(persisted.entities.length > 0);
+  });
+
+  await t.test('7. localStorage never receives disk-backed chapters', () => {
+    useWorkspaceStore.getState().loadDemoProject();
+    useWorkspaceStore.setState({ isDemoData: false, rootPath: '/tmp/my-novel' });
+
+    const raw = globalThis.localStorage.getItem('novelforge-workspace-storage');
+    assert.ok(raw, 'expected the persisted workspace payload');
+    const parsed = JSON.parse(raw);
+    assert.deepEqual(parsed.state.chapters, []);
+    assert.deepEqual(parsed.state.entities, []);
+    assert.equal(parsed.state.rootPath, '/tmp/my-novel');
   });
 });

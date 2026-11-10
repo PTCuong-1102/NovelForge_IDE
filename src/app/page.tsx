@@ -44,6 +44,9 @@ export default function WorkbenchPage() {
     loadDemoProject,
     openProjectFromDialog,
     dismissIpcNotice,
+    rootPath,
+    isDemoData,
+    reloadCurrentProjectFromDisk,
   } = useWorkspaceStore();
 
   const {
@@ -59,6 +62,13 @@ export default function WorkbenchPage() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Desktop: the disk is the source of truth — re-read the project on startup.
+  useEffect(() => {
+    if (isTauri() && rootPath && !isDemoData && chapters.length === 0) {
+      void reloadCurrentProjectFromDisk();
+    }
+  }, [rootPath, isDemoData, chapters.length, reloadCurrentProjectFromDisk]);
 
   // Global Keyboard Shortcuts (VS Code & IntelliJ Ergonomics)
   useEffect(() => {

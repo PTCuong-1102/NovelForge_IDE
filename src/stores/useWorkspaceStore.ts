@@ -44,7 +44,7 @@ export interface OpenWorkbenchTab {
   pane: 'primary' | 'secondary';
 }
 
-interface WorkspaceState {
+export interface WorkspaceState {
   projectName: string;
   theme: ThemeMode;
   activeActivity: LeftActivityView;
@@ -102,6 +102,8 @@ interface WorkspaceState {
   openProjectFromDialog: () => Promise<void>;
   /** Writes every pending debounced save to disk and waits for it to finish. */
   flushAllSaves: () => Promise<void>;
+  /** Re-reads chapters, entities and snapshots from disk (desktop, real project). */
+  reloadCurrentProjectFromDisk: () => Promise<void>;
   dismissIpcNotice: () => void;
   resetToDefaults: () => void;
   exportProjectJson: () => string;
@@ -112,6 +114,48 @@ const INITIAL_ENTITIES = DEMO_ENTITIES;
 const INITIAL_CHAPTERS = DEMO_CHAPTERS;
 const INITIAL_RELATIONS = DEMO_RELATIONS;
 const INITIAL_SNAPSHOTS = DEMO_SNAPSHOTS;
+
+export interface PersistedWorkspaceState {
+  projectName: string;
+  theme: ThemeMode;
+  chapters: ChapterDocument[];
+  entities: LoreEntity[];
+  relations: CharacterRelationEdge[];
+  snapshots: StorySnapshot[];
+  activeBranch: string;
+  availableBranches: string[];
+  isDemoData: boolean;
+  rootPath: string | null;
+  openTabs: OpenWorkbenchTab[];
+  activePrimaryTabId: string;
+  activeSecondaryTabId: string | null;
+}
+
+/**
+ * Only demo workspaces may be cached in `localStorage`: a disk-backed project is
+ * re-read from disk on startup, so caching its chapters would overwrite real files
+ * and blow the 5 MB storage quota.
+ */
+export function workspacePartialize(
+  state: WorkspaceState
+): PersistedWorkspaceState {
+  const isDemo = state.isDemoData;
+  return {
+    projectName: state.projectName,
+    theme: state.theme,
+    chapters: isDemo ? state.chapters : [],
+    entities: isDemo ? state.entities : [],
+    relations: isDemo ? state.relations : [],
+    snapshots: isDemo ? state.snapshots : [],
+    activeBranch: state.activeBranch,
+    availableBranches: state.availableBranches,
+    isDemoData: state.isDemoData,
+    rootPath: state.rootPath,
+    openTabs: state.openTabs,
+    activePrimaryTabId: state.activePrimaryTabId,
+    activeSecondaryTabId: state.activeSecondaryTabId,
+  };
+}
 
 // --- Disk persistence (debounced; no-op outside Tauri or in demo mode) ---
 const chapterSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -501,6 +545,31 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
       },
 
+      reloadCurrentProjectFromDisk: async () => {
+        const s = get();
+        if (!isTauri() || s.isDemoData || !s.rootPath) return;
+
+        const res = await loadProject(s.rootPath);
+        if (!res.ok) {
+          set({
+            saveStatus: 'unsaved',
+            ipcNotice: `Không tải lại được project từ đĩa: ${res.error}`,
+          });
+          return;
+        }
+
+        const snaps = await invokeSafe<StorySnapshot[]>('list_snapshots', {
+          projectRoot: s.rootPath,
+        });
+        set({
+          projectName: res.data.projectName,
+          chapters: res.data.chapters,
+          entities: res.data.entities,
+          snapshots: snaps.ok ? snaps.data : s.snapshots,
+          saveStatus: 'saved',
+        });
+      },
+
       createGitSnapshot: async (label) => {
         const finalLabel =
           label ||
@@ -856,21 +925,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       name: 'novelforge-workspace-storage',
       version: 2,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        projectName: state.projectName,
-        theme: state.theme,
-        chapters: state.chapters,
-        entities: state.entities,
-        relations: state.relations,
-        snapshots: state.snapshots,
-        activeBranch: state.activeBranch,
-        availableBranches: state.availableBranches,
-        isDemoData: state.isDemoData,
-        rootPath: state.rootPath,
-        openTabs: state.openTabs,
-        activePrimaryTabId: state.activePrimaryTabId,
-        activeSecondaryTabId: state.activeSecondaryTabId,
-      }),
+      partialize: workspacePartialize,
     }
   )
 );
