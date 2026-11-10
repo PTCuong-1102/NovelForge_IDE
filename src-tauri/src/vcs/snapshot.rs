@@ -45,7 +45,9 @@ fn count_words_in_dir(dir: &Path) -> usize {
                 total += count_words_in_dir(&path);
             } else if path.extension().map_or(false, |ext| ext == "md") {
                 if let Ok(content) = std::fs::read_to_string(&path) {
-                    total += content.split_whitespace().count();
+                    total +=
+                        crate::core_engine::parser::parse_markdown_with_frontmatter(&content)
+                            .word_count;
                 }
             }
         }
@@ -60,7 +62,8 @@ fn snapshot_words(msg: &str) -> Option<usize> {
 }
 
 fn open_repo(project_root: &str) -> Result<Repository, GitError> {
-    Repository::discover(Path::new(project_root)).map_err(|e| {
+    // `open` (not `discover`): a project must never commit into a parent repository.
+    Repository::open(Path::new(project_root)).map_err(|e| {
         GitError::new(
             "NOT_A_REPO",
             format!("Directory is not a git repository: {e}"),
@@ -109,19 +112,36 @@ pub fn create_snapshot(
         .index()
         .map_err(|e| GitError::new("GIT_FAILURE", e.to_string()))?;
 
+    // Build the snapshot tree on top of the last commit, never on top of the
+    // user's index: files staged outside manuscript/ and lorebook/ must not
+    // leak into the snapshot commit, and the user's staging area stays intact.
+    let parent_commit = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+    match &parent_commit {
+        Some(parent) => {
+            let tree = repo
+                .find_tree(parent.tree_id())
+                .map_err(|e| GitError::new("GIT_FAILURE", e.to_string()))?;
+            index
+                .read_tree(&tree)
+                .map_err(|e| GitError::new("GIT_FAILURE", e.to_string()))?;
+        }
+        None => index
+            .clear()
+            .map_err(|e| GitError::new("GIT_FAILURE", e.to_string()))?,
+    }
+
     // Stage manuscript and lorebook only; never touch anything else.
+    // `update_all` first so files deleted from disk also leave the index.
     index
-        .add_all(["manuscript", "lorebook"].iter(), IndexAddOption::DEFAULT, None)
+        .update_all(&[Path::new("manuscript"), Path::new("lorebook")], None)
         .map_err(|e| GitError::new("GIT_FAILURE", e.to_string()))?;
     index
-        .write()
+        .add_all(["manuscript", "lorebook"].iter(), IndexAddOption::DEFAULT, None)
         .map_err(|e| GitError::new("GIT_FAILURE", e.to_string()))?;
 
     let tree_id = index
         .write_tree()
         .map_err(|e| GitError::new("GIT_FAILURE", e.to_string()))?;
-
-    let parent_commit = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
 
     // Nothing-to-commit guard: same tree as parent => reuse, do not create empty snapshot.
     if let Some(parent) = &parent_commit {
@@ -405,5 +425,101 @@ mod tests {
         let restored = fs::read_to_string(dir.path().join("manuscript/ch-01.md")).unwrap();
         assert_eq!(restored.trim(), "alpha beta gamma delta");
         assert_eq!(fs::read_to_string(dir.path().join("notes.txt")).unwrap(), "do not touch\n");
+    }
+
+    #[test]
+    fn create_snapshot_records_deleted_chapter() {
+        let dir = setup_repo();
+        let root = dir.path().to_string_lossy().to_string();
+        fs::write(dir.path().join("manuscript/ch-02.md"), "gamma delta epsilon\n").unwrap();
+        create_snapshot(root.clone(), None, "rev one".to_string()).unwrap();
+
+        fs::remove_file(dir.path().join("manuscript/ch-02.md")).unwrap();
+        let snap2 = create_snapshot(root.clone(), None, "rev two".to_string()).unwrap();
+
+        let repo = Repository::open(dir.path()).unwrap();
+        let commit = repo.find_commit(Oid::from_str(&snap2.id).unwrap()).unwrap();
+        let tree = commit.tree().unwrap();
+        assert!(
+            tree.get_path(Path::new("manuscript/ch-02.md")).is_err(),
+            "a chapter deleted from disk must leave the snapshot tree"
+        );
+        assert!(
+            tree.get_path(Path::new("manuscript/ch-01.md")).is_ok(),
+            "an untouched chapter must stay in the snapshot tree"
+        );
+    }
+
+    #[test]
+    fn create_snapshot_excludes_frontmatter_from_word_count() {
+        let dir = setup_repo();
+        let root = dir.path().to_string_lossy().to_string();
+        fs::write(
+            dir.path().join("manuscript/ch-01.md"),
+            "---\nid: ch_01\ntitle: Mở đầu\nweather: Mưa axit\n---\n\nCó bốn từ thôi\n",
+        )
+        .unwrap();
+
+        let snap = create_snapshot(root.clone(), None, "rev one".to_string()).unwrap();
+        assert_eq!(snap.total_words, 4, "YAML frontmatter must not count as prose");
+    }
+
+    #[test]
+    fn create_snapshot_ignores_files_staged_outside_manuscript() {
+        let dir = setup_repo();
+        let root = dir.path().to_string_lossy().to_string();
+
+        // A user stages an unrelated file from the terminal.
+        fs::write(dir.path().join("secret.txt"), "top secret\n").unwrap();
+        let repo = Repository::open(dir.path()).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("secret.txt")).unwrap();
+        index.write().unwrap();
+
+        fs::write(dir.path().join("manuscript/ch-01.md"), "alpha beta gamma\n").unwrap();
+        let snap = create_snapshot(root.clone(), None, "rev one".to_string()).unwrap();
+
+        let repo = Repository::open(dir.path()).unwrap();
+        let commit = repo.find_commit(Oid::from_str(&snap.id).unwrap()).unwrap();
+        let tree = commit.tree().unwrap();
+        assert!(
+            tree.get_path(Path::new("secret.txt")).is_err(),
+            "a file staged outside manuscript/ and lorebook/ must not enter the snapshot commit"
+        );
+        assert!(
+            repo.index()
+                .unwrap()
+                .get_path(Path::new("secret.txt"), 0)
+                .is_some(),
+            "the user's staged file must stay staged"
+        );
+    }
+
+    #[test]
+    fn create_snapshot_never_commits_into_a_parent_repository() {
+        let outer = tempfile::tempdir().unwrap();
+        let repo = Repository::init(outer.path()).unwrap();
+        fs::create_dir_all(outer.path().join("manuscript")).unwrap();
+        fs::write(outer.path().join("manuscript/ch-01.md"), "alpha beta\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("manuscript/ch-01.md")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = Signature::now("Test", "test@test").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+
+        // A nested project directory that was never initialised as a repository.
+        let inner = outer.path().join("nested-project");
+        fs::create_dir_all(inner.join("manuscript")).unwrap();
+        fs::write(inner.join("manuscript/ch-01.md"), "alpha beta gamma\n").unwrap();
+
+        let err = create_snapshot(
+            inner.to_string_lossy().to_string(),
+            None,
+            "must not escape".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, "NOT_A_REPO");
     }
 }
