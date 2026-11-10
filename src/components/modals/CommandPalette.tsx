@@ -85,7 +85,7 @@ export const CommandPalette: React.FC = () => {
     {
       id: 'cmd-snapshot',
       label: 'Git: Tạo điểm nhớ (Snapshot) cốt truyện tức thì',
-      shortcut: 'Ctrl+S',
+      shortcut: 'Ctrl+Shift+S',
       action: () => createGitSnapshot('Điểm nhớ thủ công từ Command Palette'),
     },
     {

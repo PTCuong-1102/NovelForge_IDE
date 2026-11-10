@@ -93,13 +93,15 @@ interface WorkspaceState {
     selectedMatchIds: Set<string>,
     aliasMap: { from: string; to: string }[]
   ) => void;
-  createGitSnapshot: (label: string) => void;
-  restoreSnapshot: (snapshotId: string) => void;
+  createGitSnapshot: (label: string) => Promise<void>;
+  restoreSnapshot: (snapshotId: string) => Promise<void>;
   createWhatIfBranch: (branchName: string) => void;
   switchBranch: (branchName: string) => void;
   loadDemoProject: () => void;
-  closeProject: () => void;
+  closeProject: () => Promise<void>;
   openProjectFromDialog: () => Promise<void>;
+  /** Writes every pending debounced save to disk and waits for it to finish. */
+  flushAllSaves: () => Promise<void>;
   dismissIpcNotice: () => void;
   resetToDefaults: () => void;
   exportProjectJson: () => string;
@@ -179,24 +181,57 @@ const persistAllChapters = () => {
   for (const ch of getStateRef().chapters) persistChapter(ch.id);
 };
 
-const flushChapterSave = (chapterId: string) => {
+/** True only when a real disk write can happen (desktop app, real project). */
+const canWriteToDisk = (s: WorkspaceState): boolean =>
+  isTauri() && !s.isDemoData && Boolean(s.rootPath);
+
+const flushChapterSave = async (chapterId: string): Promise<boolean> => {
   const pending = chapterSaveTimers.get(chapterId);
-  if (pending) {
-    clearTimeout(pending);
-    chapterSaveTimers.delete(chapterId);
-    if (!getStateRef) return;
-    const cur = getStateRef();
-    const ch = cur.chapters.find((c) => c.id === chapterId);
-    if (ch && cur.rootPath && isTauri() && !cur.isDemoData) {
-      saveChapterToDisk(cur.rootPath, ch);
-    }
-  }
+  if (!pending) return true;
+  clearTimeout(pending);
+  chapterSaveTimers.delete(chapterId);
+  if (!getStateRef) return true;
+  const cur = getStateRef();
+  const ch = cur.chapters.find((c) => c.id === chapterId);
+  if (!ch || !cur.rootPath || !canWriteToDisk(cur)) return true;
+
+  const res = await saveChapterToDisk(cur.rootPath, ch);
+  if (res.ok) return true;
+  useWorkspaceStore.setState((prev) => ({
+    saveStatus: 'unsaved',
+    ipcNotice:
+      prev.ipcNotice ??
+      `Không lưu được ${ch.file_path}: ${res.error ?? 'unknown error'}`,
+  }));
+  return false;
 };
 
-const flushAllChapterSaves = () => {
-  if (!getStateRef) return;
-  for (const chapterId of [...chapterSaveTimers.keys()]) flushChapterSave(chapterId);
+const flushEntitySave = async (entityId: string): Promise<boolean> => {
+  const pending = entitySaveTimers.get(entityId);
+  if (!pending) return true;
+  clearTimeout(pending);
+  entitySaveTimers.delete(entityId);
+  if (!getStateRef) return true;
+  const cur = getStateRef();
+  const entity = cur.entities.find((e) => e.id === entityId);
+  if (!entity || !cur.rootPath || !canWriteToDisk(cur)) return true;
+
+  const res = await saveEntityToDisk(cur.rootPath, entity);
+  if (res.ok) return true;
+  useWorkspaceStore.setState((prev) => ({
+    saveStatus: 'unsaved',
+    ipcNotice:
+      prev.ipcNotice ??
+      `Không lưu được ${entity.file_path}: ${res.error ?? 'unknown error'}`,
+  }));
+  return false;
 };
+
+const flushAllChapterSaves = (): Promise<boolean[]> =>
+  Promise.all([...chapterSaveTimers.keys()].map(flushChapterSave));
+
+const flushAllEntitySaves = (): Promise<boolean[]> =>
+  Promise.all([...entitySaveTimers.keys()].map(flushEntitySave));
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
@@ -300,7 +335,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       updateChapterParagraphs: (chapterId, paragraphs) => {
         set((state) => ({
-          saveStatus: 'saving',
+          saveStatus: canWriteToDisk(state) ? 'saving' : 'saved',
           chapters: state.chapters.map((ch) =>
             ch.id === chapterId
               ? { ...ch, paragraphs, updated_at: new Date().toISOString() }
@@ -312,7 +347,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       updateChapterMetadata: (chapterId, patch) => {
         set((state) => ({
-          saveStatus: 'saving',
+          saveStatus: canWriteToDisk(state) ? 'saving' : 'saved',
           chapters: state.chapters.map((ch) =>
             ch.id === chapterId
               ? { ...ch, ...patch, updated_at: new Date().toISOString() }
@@ -456,10 +491,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         persistEntity(entityId);
       },
 
-      createGitSnapshot: (label) => {
+      flushAllSaves: async () => {
+        const results = [
+          ...(await flushAllChapterSaves()),
+          ...(await flushAllEntitySaves()),
+        ];
+        if (results.every(Boolean)) {
+          set({ saveStatus: 'saved' });
+        }
+      },
+
+      createGitSnapshot: async (label) => {
         const finalLabel =
           label ||
           `Snapshot tự động (${new Date().toLocaleTimeString('vi-VN')})`;
+
+        // Every pending edit must reach the disk before Git reads the work tree.
+        await get().flushAllSaves();
+
         const snapshotLabelState = get();
 
         if (
@@ -468,27 +517,25 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           snapshotLabelState.rootPath
         ) {
           const projectRoot = snapshotLabelState.rootPath;
-          flushAllChapterSaves();
           set({ saveStatus: 'saving' });
-          invokeSafe<StorySnapshot>('create_snapshot', {
+          const res = await invokeSafe<StorySnapshot>('create_snapshot', {
             projectRoot,
             label: finalLabel,
-          }).then((res) => {
-            if (res.ok) {
-              set((prev) => ({
-                snapshots: [res.data, ...prev.snapshots],
-                saveStatus: 'saved',
-                ipcNotice: null,
-              }));
-            } else {
-              set({
-                saveStatus: 'saved',
-                ipcNotice: res.error.includes('NOTHING_TO_COMMIT')
-                  ? null
-                  : `Snapshot thất bại: ${res.error}`,
-              });
-            }
           });
+          if (res.ok) {
+            set((prev) => ({
+              snapshots: [res.data, ...prev.snapshots],
+              saveStatus: 'saved',
+              ipcNotice: null,
+            }));
+          } else {
+            set({
+              saveStatus: 'saved',
+              ipcNotice: res.error.includes('NOTHING_TO_COMMIT')
+                ? null
+                : `Snapshot thất bại: ${res.error}`,
+            });
+          }
           return;
         }
 
@@ -520,7 +567,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         });
       },
 
-      restoreSnapshot: (snapshotId) => {
+      restoreSnapshot: async (snapshotId) => {
+        // Pending edits must be flushed before Git rewrites the work tree.
+        await get().flushAllSaves();
+
         const snapshotState = get();
 
         if (
@@ -535,35 +585,33 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           );
           if (!confirmed) return;
 
-          flushAllChapterSaves();
           set({ saveStatus: 'saving' });
-          invokeSafe('restore_snapshot', {
+          const res = await invokeSafe('restore_snapshot', {
             projectRoot,
             snapshotId,
             confirm: true,
-          }).then(async (res) => {
-            if (!res.ok) {
-              set({
-                saveStatus: 'unsaved',
-                ipcNotice: `Không khôi phục được: ${res.error}`,
-              });
-              return;
-            }
-            const reload = await loadProject(projectRoot);
-            if (reload.ok) {
-              set({
-                chapters: reload.data.chapters,
-                entities: reload.data.entities,
-                saveStatus: 'saved',
-                ipcNotice: 'Đã khôi phục snapshot (chỉ manuscript/ và lorebook/).',
-              });
-            } else {
-              set({
-                saveStatus: 'unsaved',
-                ipcNotice: `Đã khôi phục nhưng tải lại thất bại: ${reload.error}`,
-              });
-            }
           });
+          if (!res.ok) {
+            set({
+              saveStatus: 'unsaved',
+              ipcNotice: `Không khôi phục được: ${res.error}`,
+            });
+            return;
+          }
+          const reload = await loadProject(projectRoot);
+          if (reload.ok) {
+            set({
+              chapters: reload.data.chapters,
+              entities: reload.data.entities,
+              saveStatus: 'saved',
+              ipcNotice: 'Đã khôi phục snapshot (chỉ manuscript/ và lorebook/).',
+            });
+          } else {
+            set({
+              saveStatus: 'unsaved',
+              ipcNotice: `Đã khôi phục nhưng tải lại thất bại: ${reload.error}`,
+            });
+          }
           return;
         }
 
@@ -617,6 +665,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           });
           return;
         }
+        await get().flushAllSaves();
         set({ isProjectLoading: true, ipcNotice: null });
         try {
           const { open } = await import('@tauri-apps/plugin-dialog');
@@ -738,7 +787,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         });
       },
 
-      closeProject: () => {
+      closeProject: async () => {
+        await get().flushAllSaves();
         set({
           isProjectLoading: false,
           isDemoData: false,

@@ -38,6 +38,7 @@ export default function WorkbenchPage() {
     toggleSplitView,
     toggleZenMode,
     createGitSnapshot,
+    flushAllSaves,
     isProjectLoading,
     ipcNotice,
     loadDemoProject,
@@ -99,10 +100,14 @@ export default function WorkbenchPage() {
         return;
       }
 
-      // 6. Save & Git Snapshot (Ctrl+S)
+      // 6. Save to disk (Ctrl+S) and Git Snapshot (Ctrl+Shift+S)
       if (isCmdOrCtrl && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        createGitSnapshot('Lưu nhanh qua phím tắt Ctrl+S');
+        if (e.shiftKey) {
+          void createGitSnapshot('Điểm nhớ nhanh (Ctrl+Shift+S)');
+        } else {
+          void flushAllSaves();
+        }
         return;
       }
     };
@@ -115,6 +120,7 @@ export default function WorkbenchPage() {
     toggleSplitView,
     toggleZenMode,
     createGitSnapshot,
+    flushAllSaves,
   ]);
 
   // Empty-state welcome screen: shown when no project is open.
