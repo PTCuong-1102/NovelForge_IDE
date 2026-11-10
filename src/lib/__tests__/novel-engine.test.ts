@@ -22,6 +22,11 @@ import {
   parseLosslessMarkdownToChapter,
 } from '../../components/editor/extensions/lossless-markdown.js';
 import { buildContextualGhostSuggestion } from '../../components/editor/extensions/ghost-text.js';
+import {
+  containsWholeWordUnicode,
+  isUnicodeWordBoundary,
+  replaceWholeWordUnicode,
+} from '../word-boundary.js';
 
 describe('NovelForge Core Literature Engine Tests', () => {
   const sampleMarkdown = `---
@@ -262,5 +267,83 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
         `paragraphs drifted for ${file}`
       );
     }
+  });
+
+  it('12. Unicode word boundary helpers detect glued word characters', () => {
+    assert.strictEqual(isUnicodeWordBoundary('An x', 0, 2), true);
+    assert.strictEqual(isUnicodeWordBoundary('Anh', 0, 2), false);
+    assert.strictEqual(isUnicodeWordBoundary('xAn', 1, 3), false);
+    assert.strictEqual(isUnicodeWordBoundary('Lâm Vũ Linh', 0, 3), true);
+    assert.strictEqual(isUnicodeWordBoundary('LâmVũ', 0, 3), false);
+  });
+
+  it('13. replaceWholeWordUnicode only rewrites standalone tokens', () => {
+    assert.strictEqual(
+      replaceWholeWordUnicode(
+        'An bước đi trong đêm an toàn cùng Công an.',
+        'An',
+        'Bình'
+      ),
+      'Bình bước đi trong đêm an toàn cùng Công an.'
+    );
+    assert.strictEqual(
+      replaceWholeWordUnicode('Anh bước đi.', 'An', 'Bình'),
+      'Anh bước đi.'
+    );
+    assert.strictEqual(
+      replaceWholeWordUnicode('An bước đi.', 'An', 'Bình'),
+      'Bình bước đi.'
+    );
+    assert.strictEqual(
+      containsWholeWordUnicode('đêm an toàn', 'An'),
+      false,
+      'a token must match case-sensitively'
+    );
+  });
+
+  it('14. Refactor Rename preview replaces whole words only', () => {
+    const previews = buildRefactorRenamePreview(
+      [
+        {
+          ...mockChapter8,
+          paragraphs: ['An bước đi trong đêm an toàn cùng Công an và An.'],
+        },
+      ],
+      'An',
+      'Bình',
+      []
+    );
+    assert.strictEqual(previews.length, 1);
+    assert.strictEqual(
+      previews[0].preview_sentence,
+      'Bình bước đi trong đêm an toàn cùng Công an và Bình.'
+    );
+  });
+
+  it('15. Implicit entity scanner never matches inside a longer word', () => {
+    const shortNameEntity: LoreEntity = {
+      id: 'char_an',
+      entity_type: 'character',
+      title: 'An',
+      aliases: [],
+      file_path: 'lorebook/characters/an.md',
+      status: 'alive',
+      tags: [],
+      summary: '',
+      body: '',
+      updated_at: '',
+    };
+    const mentions = scanImplicitEntitiesInChapter(
+      {
+        ...mockChapter8,
+        paragraphs: ['Anh bước đi trong đêm an toàn cùng Công an.'],
+      },
+      [shortNameEntity]
+    );
+    assert.strictEqual(
+      mentions.length,
+      0,
+      'the alias "An" must not match "Anh" nor the word "an"'
+    );
   });
 });

@@ -16,6 +16,7 @@ import {
   createDemoWorkspace,
 } from '@/lib/ipc-demo';
 import { isTauri, invokeSafe } from '@/lib/ipc';
+import { replaceWholeWordUnicode } from '@/lib/word-boundary';
 import {
   loadProject,
   saveChapterToDisk,
@@ -550,8 +551,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               let nextPara = para;
               for (const pair of pairs) {
                 const matchId = `ref-${ch.id}-p${pIdx}-${pair.from}`;
-                if (selectedMatchIds.has(matchId) && nextPara.includes(pair.from)) {
-                  nextPara = nextPara.split(pair.from).join(pair.to);
+                if (selectedMatchIds.has(matchId)) {
+                  nextPara = replaceWholeWordUnicode(nextPara, pair.from, pair.to);
                 }
               }
               return nextPara;
@@ -571,7 +572,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                   ...e,
                   title: newName,
                   aliases: newAliases,
-                  body: e.body.split(targetEntity.title).join(newName),
+                  body: replaceWholeWordUnicode(
+                    e.body,
+                    targetEntity.title,
+                    newName
+                  ),
                   updated_at: new Date().toISOString(),
                 }
               : e

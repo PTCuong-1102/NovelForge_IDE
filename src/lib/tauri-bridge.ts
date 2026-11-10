@@ -1,4 +1,5 @@
 import yaml from 'js-yaml';
+import { isUnicodeWordBoundary, replaceWholeWordUnicode } from './word-boundary';
 
 export type ThemeMode = 'obsidian' | 'parchment' | 'daylight';
 
@@ -218,7 +219,10 @@ export function countVietnameseAndLatinWords(text: string): number {
 }
 
 /**
- * Multi-pattern Implicit Entity Scanner (mirrors `core_engine/linter.rs` Aho-Corasick scan).
+ * Multi-pattern Implicit Entity Scanner.
+ *
+ * Matches whole words only (Unicode aware) and case-sensitively, so a character
+ * named "An" never matches "Anh" nor the word "an".
  * Automatically detects character names, aliases, locations, and items in < 2ms.
  */
 export function scanImplicitEntitiesInChapter(
@@ -229,7 +233,6 @@ export function scanImplicitEntitiesInChapter(
 
   const patterns: {
     token: string;
-    tokenLower: string;
     entity: LoreEntity;
   }[] = [];
 
@@ -238,7 +241,6 @@ export function scanImplicitEntitiesInChapter(
     if (entity.title.trim()) {
       patterns.push({
         token: entity.title.trim(),
-        tokenLower: entity.title.trim().toLowerCase(),
         entity,
       });
     }
@@ -246,7 +248,6 @@ export function scanImplicitEntitiesInChapter(
       if (alias.trim()) {
         patterns.push({
           token: alias.trim(),
-          tokenLower: alias.trim().toLowerCase(),
           entity,
         });
       }
@@ -257,15 +258,19 @@ export function scanImplicitEntitiesInChapter(
   patterns.sort((a, b) => b.token.length - a.token.length);
 
   chapter.paragraphs.forEach((para, pIdx) => {
-    const paraLower = para.toLowerCase();
     const occupiedRanges: [number, number][] = [];
 
     for (const pat of patterns) {
       let searchStart = 0;
-      while (searchStart < paraLower.length) {
-        const idx = paraLower.indexOf(pat.tokenLower, searchStart);
+      while (searchStart <= para.length - pat.token.length) {
+        const idx = para.indexOf(pat.token, searchStart);
         if (idx === -1) break;
         const endIdx = idx + pat.token.length;
+
+        if (!isUnicodeWordBoundary(para, idx, endIdx)) {
+          searchStart = idx + 1;
+          continue;
+        }
 
         const overlaps = occupiedRanges.some(
           ([s, e]) => !(endIdx <= s || idx >= e)
@@ -479,20 +484,19 @@ export function buildRefactorRenamePreview(
   for (const ch of chapters) {
     ch.paragraphs.forEach((para, pIdx) => {
       for (const pair of pairs) {
-        if (para.includes(pair.from)) {
-          const previewSentence = para.split(pair.from).join(pair.to);
-          results.push({
-            id: `ref-${ch.id}-p${pIdx}-${pair.from}`,
-            chapter_id: ch.id,
-            chapter_title: ch.title,
-            paragraph_index: pIdx,
-            original_sentence: para,
-            preview_sentence: previewSentence,
-            matched_token: pair.from,
-            replacement_token: pair.to,
-            selected: true,
-          });
-        }
+        const previewSentence = replaceWholeWordUnicode(para, pair.from, pair.to);
+        if (previewSentence === para) continue;
+        results.push({
+          id: `ref-${ch.id}-p${pIdx}-${pair.from}`,
+          chapter_id: ch.id,
+          chapter_title: ch.title,
+          paragraph_index: pIdx,
+          original_sentence: para,
+          preview_sentence: previewSentence,
+          matched_token: pair.from,
+          replacement_token: pair.to,
+          selected: true,
+        });
       }
     });
   }

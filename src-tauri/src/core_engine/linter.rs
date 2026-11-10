@@ -37,7 +37,7 @@ pub struct ContinuityDiagnostic {
 }
 
 /// Checks whether a byte range `[start..end]` in `text` falls on clean token boundaries.
-fn is_valid_word_boundary(text: &str, start: usize, end: usize) -> bool {
+pub fn is_valid_word_boundary(text: &str, start: usize, end: usize) -> bool {
     let before_ok = if start == 0 {
         true
     } else {
@@ -61,8 +61,29 @@ fn is_valid_word_boundary(text: &str, start: usize, end: usize) -> bool {
     before_ok && after_ok
 }
 
+/// Lowercases `text` and keeps a map from every lowercased byte offset back to
+/// the byte offset in the original text, so a match found in the lowercased
+/// string can still be reported with its original case.
+fn lowercase_with_offset_map(text: &str) -> (String, Vec<usize>) {
+    let mut lower = String::with_capacity(text.len());
+    let mut map: Vec<usize> = Vec::with_capacity(text.len() + 1);
+    for (orig_offset, ch) in text.char_indices() {
+        for lower_ch in ch.to_lowercase() {
+            lower.push(lower_ch);
+            for _ in 0..lower_ch.len_utf8() {
+                map.push(orig_offset);
+            }
+        }
+    }
+    map.push(text.len());
+    (lower, map)
+}
+
 /// Uses the Aho-Corasick automaton (`LeftmostLongest`) to scan a chapter for all character/entity names
 /// and aliases in < 2ms with clean word boundary validation.
+///
+/// Matching is case-insensitive over the full Unicode range, so a Vietnamese
+/// name written in capitals (`CHỈ HUY KHÁNH`) is still recognised.
 pub fn scan_implicit_entities(
     paragraphs: &[String],
     characters: &[LoreCharacterSpec],
@@ -97,7 +118,11 @@ pub fn scan_implicit_entities(
     // Sort longest patterns first so LeftmostLongest prioritizes full names over short aliases
     candidate_tuples.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
-    let patterns: Vec<String> = candidate_tuples.iter().map(|t| t.0.clone()).collect();
+    // Both sides are lowercased: Aho-Corasick only folds ASCII case.
+    let patterns: Vec<String> = candidate_tuples
+        .iter()
+        .map(|t| t.0.to_lowercase())
+        .collect();
     let pattern_meta: Vec<(String, String)> = candidate_tuples
         .into_iter()
         .map(|(_, id, canon)| (id, canon))
@@ -105,7 +130,6 @@ pub fn scan_implicit_entities(
 
     let ac = match AhoCorasickBuilder::new()
         .match_kind(MatchKind::LeftmostLongest)
-        .ascii_case_insensitive(true)
         .build(&patterns)
     {
         Ok(automaton) => automaton,
@@ -114,17 +138,20 @@ pub fn scan_implicit_entities(
 
     let mut spans = Vec::new();
     for (p_idx, para) in paragraphs.iter().enumerate() {
-        for mat in ac.find_iter(para) {
-            if !is_valid_word_boundary(para, mat.start(), mat.end()) {
+        let (para_lower, offset_map) = lowercase_with_offset_map(para);
+        for mat in ac.find_iter(&para_lower) {
+            let start = offset_map[mat.start()];
+            let end = offset_map[mat.end()];
+            if !is_valid_word_boundary(para, start, end) {
                 continue;
             }
             let (ref entity_id, ref canonical_name) = pattern_meta[mat.pattern().as_usize()];
             spans.push(DetectedEntitySpan {
                 entity_id: entity_id.clone(),
-                matched_text: para[mat.start()..mat.end()].to_string(),
+                matched_text: para[start..end].to_string(),
                 canonical_name: canonical_name.clone(),
-                start_offset: mat.start(),
-                end_offset: mat.end(),
+                start_offset: start,
+                end_offset: end,
                 paragraph_index: p_idx,
             });
         }
@@ -370,8 +397,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_linter_dead_character_and_attribute_mismatch() {
-        let mut linh_attrs = HashMap::new();
+    fn test_linter_dead_character_and_attribute_mismatch() {        let mut linh_attrs = HashMap::new();
         linh_attrs.insert("appearance".to_string(), "Tóc ngắn ngang vai, áo khoác đen".to_string());
 
         let characters = vec![
@@ -407,4 +433,27 @@ mod tests {
         assert!(issues.iter().any(|i| i.rule_id == "ATTRIBUTE_MISMATCH"));
         assert!(issues.iter().any(|i| i.rule_id == "PACING_REPETITION"));
     }
+
+    #[test]
+    fn test_linter_matches_uppercase_vietnamese_names() {
+        let characters = vec![LoreCharacterSpec {
+            id: "char_khanh".to_string(),
+            name: "Chỉ huy Khánh".to_string(),
+            aliases: vec![],
+            status: "dead".to_string(),
+            death_chapter_order: Some(1),
+            death_date: Some("12/10/2026".to_string()),
+            death_chapter_title: Some("Chương 1".to_string()),
+            attributes: HashMap::new(),
+        }];
+
+        let paragraphs = vec!["CHỈ HUY KHÁNH bước ra từ màn mưa.".to_string()];
+
+        let issues = check_chapter_continuity(2, false, "14/10/2026", &paragraphs, &characters);
+        assert!(
+            issues.iter().any(|i| i.rule_id == "DEAD_CHARACTER"),
+            "an uppercase Vietnamese name must still be detected"
+        );
+    }
 }
+
