@@ -101,4 +101,22 @@ describe('Simulation labelling & hardcoded demo data guard tests', () => {
       'Sidebar must memoise the project-wide linter run'
     );
   });
+
+  it('8. Opening a real project drops the sample agent activity', () => {
+    const agentStore = read('src/stores/useAgentStore.ts');
+    assert(
+      agentStore.includes('clearDemoArtifacts'),
+      'the agent store must be able to drop the sample artefacts'
+    );
+
+    const workspaceStore = read('src/stores/useWorkspaceStore.ts');
+    assert(
+      workspaceStore.includes('clearDemoArtifacts()'),
+      'opening a real project must clear the sample artefacts'
+    );
+    assert(
+      workspaceStore.includes('loadDemoArtifacts()'),
+      'the sample workspace must restore the sample artefacts'
+    );
+  });
 });

@@ -17,6 +17,7 @@ import {
 } from '@/lib/ipc-demo';
 import { isTauri, invokeSafe } from '@/lib/ipc';
 import { replaceWholeWordUnicode } from '@/lib/word-boundary';
+import { useAgentStore } from '@/stores/useAgentStore';
 import {
   loadProject,
   saveChapterToDisk,
@@ -654,6 +655,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           snapshots: snaps.ok ? snaps.data : s.snapshots,
           saveStatus: 'saved',
         });
+        useAgentStore.getState().clearDemoArtifacts();
       },
 
       createGitSnapshot: async (label) => {
@@ -881,6 +883,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 ? 'Thư mục này chưa có manuscript/*.md hoặc lorebook/*.md — hãy thêm nội dung rồi mở lại.'
                 : null,
           });
+          // A real project must not show the sample workspace activity.
+          useAgentStore.getState().clearDemoArtifacts();
           // Best-effort: restore snapshot timeline from git history.
           const snaps = await invokeSafe<StorySnapshot[]>('list_snapshots', {
             projectRoot: picked,
@@ -898,6 +902,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       loadDemoProject: () => {
         const demo = createDemoWorkspace();
+        useAgentStore.getState().loadDemoArtifacts();
         set({
           isProjectLoading: false,
           isDemoData: true,

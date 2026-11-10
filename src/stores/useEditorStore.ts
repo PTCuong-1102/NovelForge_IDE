@@ -60,7 +60,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   commandPaletteOpen: false,
   commandPaletteMode: 'quick-open',
   refactorModalOpen: false,
-  refactorEntityId: 'char_linh_001',
+  refactorEntityId: null,
   findUsagesEntityId: null,
   publishModalOpen: false,
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { isTauri, invokeSafe, assertIpcAvailable } from '../ipc';
 import { useWorkspaceStore } from './helpers/workspace-store';
 import { workspacePartialize } from '@/stores/useWorkspaceStore';
+import { useAgentStore } from '@/stores/useAgentStore';
 import type { ChapterDocument } from '@/lib/tauri-bridge';
 
 const makeChapter = (
@@ -246,5 +247,19 @@ test('Workspace store disk-save flush behaviour', async (t) => {
       state.openTabs.some((t) => t.id === state.activeSecondaryTabId),
       'the secondary selection must exist in openTabs'
     );
+  });
+
+  await t.test('12. the sample agent activity never survives into a real project', () => {
+    useWorkspaceStore.getState().loadDemoProject();
+    assert.ok(
+      useAgentStore.getState().mcpLogs.length > 0,
+      'the sample workspace shows the sample activity'
+    );
+
+    useAgentStore.getState().clearDemoArtifacts();
+    assert.strictEqual(useAgentStore.getState().mcpLogs.length, 0);
+    assert.strictEqual(useAgentStore.getState().composerMessages.length, 0);
+    assert.strictEqual(useAgentStore.getState().diffProposals.length, 0);
+    assert.strictEqual(useAgentStore.getState().pinnedContextIds.length, 0);
   });
 });

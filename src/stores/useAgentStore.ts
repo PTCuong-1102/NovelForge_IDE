@@ -10,6 +10,88 @@ export interface ComposerChatMessage {
   attachedDiffId?: string;
 }
 
+/**
+ * Demo-only artefacts. They belong to the sample workspace and must never leak
+ * into a real project session, where they would read as genuine MCP activity.
+ */
+const DEMO_PINNED_CONTEXT_IDS = ['char_linh_001', 'loc_cang_dong', 'ch_07'];
+
+const DEMO_DIFF_PROPOSALS: InlineDiffProposal[] = [
+  {
+    id: 'diff-init-ch08-p2',
+    agent_name: 'Antigravity',
+    chapter_id: 'ch_08',
+    paragraph_index: 2,
+    original_text:
+      'Cô bước lùi lại phía sau thùng hàng, cố giữ nhịp thở ổn định trong khi tín hiệu từ Ổ Khóa Lượng Tử Thần Nông bắt đầu phát sáng dưới lớp áo khoác.',
+    proposed_text:
+      'Linh lách người nấp sau thùng hàng rỉ sét, hơi thở dồn dập hòa vào tiếng mưa quất trên mái tôn trong khi Ổ Khóa Lượng Tử Thần Nông rung lên từng nhịp đỏ rực dưới lớp áo khoác chống thấm.',
+    rationale:
+      "Tăng nhịp độ dồn dập (Show, Don't Tell), bổ sung chi tiết xúc giác & thính giác phù hợp bối cảnh đêm mưa tại Bến Cảng Đông.",
+    created_at: '23:54',
+    status: 'pending',
+  },
+];
+
+const DEMO_COMPOSER_MESSAGES: ComposerChatMessage[] = [
+  {
+    id: 'msg-1',
+    role: 'user',
+    agent: 'OpenCode',
+    content:
+      'Viết tiếp cảnh đối đầu tại Bến Cảng Đông nhưng giữ nhịp độ dồn dập, ít mô tả rườm rà và kiểm tra tính nhất quán với Chương 5.',
+    timestamp: '23:53',
+  },
+  {
+    id: 'msg-2',
+    role: 'assistant',
+    agent: 'Antigravity',
+    content:
+      'Đã tra cứu Lorebook (`@Lâm Vũ Linh`, `#Bến_Cảng_Đông`) và chạy `novel_check_continuity`: Phát hiện **Trần Hạo** đã tử vong ở Chương 5 (12/10/2026). Tôi cũng đã đẩy 1 đề xuất chỉnh sửa Inline Diff tại đoạn 3 để tăng nhịp độ kịch tính.',
+    timestamp: '23:54',
+    attachedDiffId: 'diff-init-ch08-p2',
+  },
+];
+
+const DEMO_MCP_LOGS: McpToolExecutionLog[] = [
+  {
+    id: 'mcp-log-1',
+    timestamp: '23:52:10',
+    agent_name: 'Antigravity',
+    tool_name: 'novel_search_lore',
+    args_summary: 'query="Lâm Vũ Linh, Trần Hạo", entity_type="character"',
+    result_summary: 'Returned 2 character profiles (Hybrid BM25 + sqlite-vec score 0.96)',
+    latency_ms: 4,
+  },
+  {
+    id: 'mcp-log-2',
+    timestamp: '23:53:02',
+    agent_name: 'OpenCode',
+    tool_name: 'novel_get_chapter_context',
+    args_summary: 'chapter_id="ch_08", window_size=2',
+    result_summary: 'Loaded Ch.08 + summaries of Ch.05 & Ch.07',
+    latency_ms: 6,
+  },
+  {
+    id: 'mcp-log-3',
+    timestamp: '23:53:48',
+    agent_name: 'Cline',
+    tool_name: 'novel_check_continuity',
+    args_summary: 'chapter_id="ch_08", draft_text="...Trần Hạo lại xuất hiện..."',
+    result_summary: '1 Error (DEAD_CHARACTER: Trần Hạo died in Ch.05), 1 Warning (Repetition)',
+    latency_ms: 2,
+  },
+  {
+    id: 'mcp-log-4',
+    timestamp: '23:54:05',
+    agent_name: 'Antigravity',
+    tool_name: 'novel_propose_edit',
+    args_summary: 'file_path="manuscript/act-01/ch-08-dem-mua-ben-cang.md", line=3',
+    result_summary: 'Inline Diff queued in TipTap Editor (diff-init-ch08-p2)',
+    latency_ms: 3,
+  },
+];
+
 interface AgentStoreState {
   activeRightTab: 'composer' | 'agents' | 'mcp';
   selectedModel: string;
@@ -30,6 +112,10 @@ interface AgentStoreState {
   setOllamaEndpoint: (endpoint: string) => void;
   togglePinnedContext: (id: string) => void;
   clearMessages: () => void;
+  /** Restores the sample workspace artefacts (demo mode only). */
+  loadDemoArtifacts: () => void;
+  /** Drops every sample artefact — a real project must not show demo activity. */
+  clearDemoArtifacts: () => void;
   addDiffProposal: (proposal: InlineDiffProposal) => void;
   resolveDiffProposal: (proposalId: string, decision: 'accepted' | 'rejected') => void;
   resolveAllDiffsForChapter: (
@@ -53,87 +139,17 @@ interface AgentStoreState {
 export const useAgentStore = create<AgentStoreState>((set) => ({
   activeRightTab: 'composer',
   selectedModel: 'Claude 3.7 Sonnet (MCP Bridge)',
-  pinnedContextIds: ['char_linh_001', 'loc_cang_dong', 'ch_07'],
+  pinnedContextIds: DEMO_PINNED_CONTEXT_IDS,
   apiKey: '',
   ollamaEndpoint: 'http://localhost:11434',
   agentWritingLock: false,
   agentLockTarget: null,
 
-  diffProposals: [
-    {
-      id: 'diff-init-ch08-p2',
-      agent_name: 'Antigravity',
-      chapter_id: 'ch_08',
-      paragraph_index: 2,
-      original_text:
-        'Cô bước lùi lại phía sau thùng hàng, cố giữ nhịp thở ổn định trong khi tín hiệu từ Ổ Khóa Lượng Tử Thần Nông bắt đầu phát sáng dưới lớp áo khoác.',
-      proposed_text:
-        'Linh lách người nấp sau thùng hàng rỉ sét, hơi thở dồn dập hòa vào tiếng mưa quất trên mái tôn trong khi Ổ Khóa Lượng Tử Thần Nông rung lên từng nhịp đỏ rực dưới lớp áo khoác chống thấm.',
-      rationale:
-        'Tăng nhịp độ dồn dập (Show, Don\'t Tell), bổ sung chi tiết xúc giác & thính giác phù hợp bối cảnh đêm mưa tại Bến Cảng Đông.',
-      created_at: '23:54',
-      status: 'pending',
-    },
-  ],
+  diffProposals: DEMO_DIFF_PROPOSALS,
 
-  composerMessages: [
-    {
-      id: 'msg-1',
-      role: 'user',
-      agent: 'OpenCode',
-      content:
-        'Viết tiếp cảnh đối đầu tại Bến Cảng Đông nhưng giữ nhịp độ dồn dập, ít mô tả rườm rà và kiểm tra tính nhất quán với Chương 5.',
-      timestamp: '23:53',
-    },
-    {
-      id: 'msg-2',
-      role: 'assistant',
-      agent: 'Antigravity',
-      content:
-        'Đã tra cứu Lorebook (`@Lâm Vũ Linh`, `#Bến_Cảng_Đông`) và chạy `novel_check_continuity`: Phát hiện **Trần Hạo** đã tử vong ở Chương 5 (12/10/2026). Tôi cũng đã đẩy 1 đề xuất chỉnh sửa Inline Diff tại đoạn 3 để tăng nhịp độ kịch tính.',
-      timestamp: '23:54',
-      attachedDiffId: 'diff-init-ch08-p2',
-    },
-  ],
+  composerMessages: DEMO_COMPOSER_MESSAGES,
 
-  mcpLogs: [
-    {
-      id: 'mcp-log-1',
-      timestamp: '23:52:10',
-      agent_name: 'Antigravity',
-      tool_name: 'novel_search_lore',
-      args_summary: 'query="Lâm Vũ Linh, Trần Hạo", entity_type="character"',
-      result_summary: 'Returned 2 character profiles (Hybrid BM25 + sqlite-vec score 0.96)',
-      latency_ms: 4,
-    },
-    {
-      id: 'mcp-log-2',
-      timestamp: '23:53:02',
-      agent_name: 'OpenCode',
-      tool_name: 'novel_get_chapter_context',
-      args_summary: 'chapter_id="ch_08", window_size=2',
-      result_summary: 'Loaded Ch.08 + summaries of Ch.05 & Ch.07',
-      latency_ms: 6,
-    },
-    {
-      id: 'mcp-log-3',
-      timestamp: '23:53:48',
-      agent_name: 'Cline',
-      tool_name: 'novel_check_continuity',
-      args_summary: 'chapter_id="ch_08", draft_text="...Trần Hạo lại xuất hiện..."',
-      result_summary: '1 Error (DEAD_CHARACTER: Trần Hạo died in Ch.05), 1 Warning (Repetition)',
-      latency_ms: 2,
-    },
-    {
-      id: 'mcp-log-4',
-      timestamp: '23:54:05',
-      agent_name: 'Antigravity',
-      tool_name: 'novel_propose_edit',
-      args_summary: 'file_path="manuscript/act-01/ch-08-dem-mua-ben-cang.md", line=3',
-      result_summary: 'Inline Diff queued in TipTap Editor (diff-init-ch08-p2)',
-      latency_ms: 3,
-    },
-  ],
+  mcpLogs: DEMO_MCP_LOGS,
 
   setActiveRightTab: (tab) => set({ activeRightTab: tab }),
   setSelectedModel: (model) => set({ selectedModel: model }),
@@ -148,6 +164,24 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
     })),
 
   clearMessages: () => set({ composerMessages: [] }),
+
+  /** Restores the sample workspace artefacts (demo mode only). */
+  loadDemoArtifacts: () =>
+    set({
+      pinnedContextIds: DEMO_PINNED_CONTEXT_IDS,
+      diffProposals: DEMO_DIFF_PROPOSALS,
+      composerMessages: DEMO_COMPOSER_MESSAGES,
+      mcpLogs: DEMO_MCP_LOGS,
+    }),
+
+  /** Drops every sample artefact — a real project must not show demo activity. */
+  clearDemoArtifacts: () =>
+    set({
+      pinnedContextIds: [],
+      diffProposals: [],
+      composerMessages: [],
+      mcpLogs: [],
+    }),
 
   addDiffProposal: (proposal) =>
     set((state) => ({
