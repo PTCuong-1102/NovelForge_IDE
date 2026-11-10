@@ -487,7 +487,7 @@ export const Sidebar: React.FC = () => {
 
             {/* Branch selector */}
             <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-muted font-medium">Nhánh:</span>
+              <span className="text-muted font-medium">Nhánh (Mô phỏng):</span>
               <select
                 value={activeBranch}
                 onChange={(e) => switchBranch(e.target.value)}
@@ -611,7 +611,19 @@ export const Sidebar: React.FC = () => {
               </div>
             </div>
             <button
-              onClick={() => openRefactorModal('char_hao_002')}
+              onClick={() => {
+                const targetId =
+                  entities.find((e) => e.entity_type === 'character')?.id ||
+                  entities[0]?.id;
+                if (!targetId) {
+                  useWorkspaceStore.setState({
+                    ipcNotice:
+                      'Chưa có thực thể nào trong project để đổi tên. Hãy thêm nhân vật hoặc địa danh trước.',
+                  });
+                  return;
+                }
+                openRefactorModal(targetId);
+              }}
               title="Đổi tên toàn cục an toàn (Shift+F6)"
               className="text-xs bg-elevated hover:opacity-90 px-2.5 py-1 rounded-lg text-primary border border-border font-semibold"
             >

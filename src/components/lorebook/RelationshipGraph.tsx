@@ -109,16 +109,18 @@ const nodeTypes = {
 export const RelationshipGraph: React.FC = () => {
   const { entities, relations, openTab } = useWorkspaceStore();
   const [chapterFilter, setChapterFilter] = useState(8);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
-    'char_linh_001'
-  );
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const characters = useMemo(
     () => entities.filter((e) => e.entity_type === 'character'),
     [entities]
   );
 
-  const selectedEntity = characters.find((c) => c.id === selectedNodeId);
+  // The graph protagonist is the first character of the project, never a fixed id.
+  const centerCharacterId = characters[0]?.id;
+
+  const selectedEntity =
+    characters.find((c) => c.id === selectedNodeId) || characters[0];
 
   // Filter edges according to chapter slider
   const activeRelations = useMemo(
@@ -133,8 +135,8 @@ export const RelationshipGraph: React.FC = () => {
 
   // Position nodes in an aesthetic circular/force layout
   const nodes: Node<CharacterNodeData>[] = useMemo(() => {
-    const centerIdx = characters.findIndex((c) => c.id === 'char_linh_001');
-    const centerChar = characters[centerIdx] || characters[0];
+    const centerChar =
+      characters.find((c) => c.id === centerCharacterId) || characters[0];
     const otherChars = characters.filter((c) => c.id !== centerChar?.id);
 
     const result: Node<CharacterNodeData>[] = [];
@@ -292,7 +294,7 @@ export const RelationshipGraph: React.FC = () => {
               pannable
               className="!bg-panel !border-border !rounded-xl overflow-hidden"
               nodeColor={(node) =>
-                node.id === 'char_linh_001' ? '#10B981' : '#3B82F6'
+                node.id === centerCharacterId ? '#10B981' : '#3B82F6'
               }
             />
           </ReactFlow>

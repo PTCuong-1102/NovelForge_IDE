@@ -79,6 +79,14 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   const { diffProposals, resolveDiffProposal, sendComposerPrompt } =
     useAgentStore();
 
+  // Names inserted by the Slash Menu come from the project, never from demo data.
+  const povName =
+    chapter.pov_character_name ||
+    entities.find((e) => e.entity_type === 'character')?.title ||
+    'Nhân vật chính';
+  const locationName =
+    chapter.location_tag?.replace(/^#/, '') || 'bối cảnh hiện tại';
+
   const [canvasMode, setCanvasMode] = useState<EditorCanvasMode>('blocks');
   const [editingParagraphIndex, setEditingParagraphIndex] = useState<
     number | null
@@ -1159,13 +1167,13 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
             }}
             onInsertCharacter={() => {
               const updated = [...chapter.paragraphs];
-              updated[slashMenuParagraphIndex] += ' Lâm Vũ Linh';
+              updated[slashMenuParagraphIndex] += ` ${povName}`;
               updateChapterParagraphs(chapter.id, updated);
               setSlashMenu(false);
             }}
             onInsertLocation={() => {
               const updated = [...chapter.paragraphs];
-              updated[slashMenuParagraphIndex] += ' Bến Cảng Đông';
+              updated[slashMenuParagraphIndex] += ` ${locationName}`;
               updateChapterParagraphs(chapter.id, updated);
               setSlashMenu(false);
             }}

@@ -68,7 +68,19 @@ export const CommandPalette: React.FC = () => {
       id: 'cmd-refactor',
       label: 'Refactor Rename: Đổi tên nhân vật/địa danh toàn dự án',
       shortcut: 'Shift+F6',
-      action: () => openRefactorModal('char_linh_001'),
+      action: () => {
+        const targetId =
+          entities.find((e) => e.entity_type === 'character')?.id ||
+          entities[0]?.id;
+        if (!targetId) {
+          useWorkspaceStore.setState({
+            ipcNotice:
+              'Chưa có thực thể nào trong project để đổi tên. Hãy thêm nhân vật hoặc địa danh trước.',
+          });
+          return;
+        }
+        openRefactorModal(targetId);
+      },
     },
     {
       id: 'cmd-split',

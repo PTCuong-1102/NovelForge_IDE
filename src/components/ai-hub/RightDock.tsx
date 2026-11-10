@@ -155,21 +155,29 @@ export const RightDock: React.FC = () => {
               <span className="text-[11px] font-bold uppercase tracking-wider text-muted">
                 Mô hình sáng tác:
               </span>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="bg-elevated text-primary font-medium px-2 py-1 rounded-lg border border-border text-xs focus:outline-none"
-              >
-                <option value="Claude 3.7 Sonnet (MCP Bridge)">
-                  Claude 3.7 Sonnet (MCP)
-                </option>
-                <option value="Gemini 2.5 Flash / Pro (Local Bridge)">
-                  Gemini 2.5 Flash (MCP)
-                </option>
-                <option value="Ollama / Qwen-2.5-32B (Local-first)">
-                  Ollama Qwen-2.5 (Local)
-                </option>
-              </select>
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded border semantic-warning-box text-[10px]"
+                  title="Story Composer chạy bằng mẫu văn bản cục bộ, không gọi mô hình AI."
+                >
+                  Mô phỏng (Local Template)
+                </span>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="bg-elevated text-primary font-medium px-2 py-1 rounded-lg border border-border text-xs focus:outline-none"
+                >
+                  <option value="Claude 3.7 Sonnet (MCP Bridge)">
+                    Claude 3.7 Sonnet (MCP)
+                  </option>
+                  <option value="Gemini 2.5 Flash / Pro (Local Bridge)">
+                    Gemini 2.5 Flash (MCP)
+                  </option>
+                  <option value="Ollama / Qwen-2.5-32B (Local-first)">
+                    Ollama Qwen-2.5 (Local)
+                  </option>
+                </select>
+              </div>
             </div>
 
             {/* Context Pill Tray */}

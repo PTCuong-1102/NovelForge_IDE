@@ -33,6 +33,7 @@ export default function WorkbenchPage() {
     rightDockOpen,
     zenMode,
     chapters,
+    entities,
     toggleLeftSidebar,
     toggleRightDock,
     toggleSplitView,
@@ -92,7 +93,17 @@ export default function WorkbenchPage() {
       // 3. Refactor Rename (Shift+F6)
       if (e.shiftKey && e.key === 'F6') {
         e.preventDefault();
-        openRefactorModal('char_linh_001');
+        const targetId =
+          entities.find((x) => x.entity_type === 'character')?.id ||
+          entities[0]?.id;
+        if (!targetId) {
+          useWorkspaceStore.setState({
+            ipcNotice:
+              'Chưa có thực thể nào trong project để đổi tên. Hãy thêm nhân vật hoặc địa danh trước.',
+          });
+          return;
+        }
+        openRefactorModal(targetId);
         return;
       }
 
@@ -131,6 +142,7 @@ export default function WorkbenchPage() {
     toggleZenMode,
     createGitSnapshot,
     flushAllSaves,
+    entities,
   ]);
 
   // Empty-state welcome screen: shown when no project is open.

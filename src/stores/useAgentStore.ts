@@ -235,7 +235,7 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
         id: `msg-a-${Date.now() + 1}`,
         role: 'assistant',
         agent: 'Story Composer',
-        content: `Đã phân tích yêu cầu sáng tác cùng ${state.pinnedContextIds.length} thực thể đang ghim. Tôi vừa tạo đề xuất **Inline Diff** tại đoạn ${
+        content: `[Mô phỏng mẫu cục bộ] Đã phân tích yêu cầu sáng tác cùng ${state.pinnedContextIds.length} thực thể đang ghim. Tôi vừa tạo đề xuất **Inline Diff** tại đoạn ${
           targetParagraphIdx + 1
         }:\n\n> *"${rationale}"*\n\nBạn có thể bấm **[Chấp nhận (Tab)]** hoặc **[Từ chối (Esc)]** ngay trên trình soạn thảo.`,
         timestamp: new Date().toLocaleTimeString('vi-VN', {
@@ -245,20 +245,10 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
         attachedDiffId: newDiffId,
       };
 
-      const newMcpLog: McpToolExecutionLog = {
-        id: `mcp-${Date.now()}`,
-        timestamp: new Date().toLocaleTimeString('vi-VN'),
-        agent_name: 'Antigravity',
-        tool_name: 'novel_propose_edit',
-        args_summary: `chapter_id="${chapterId}", line=${targetParagraphIdx + 1}`,
-        result_summary: `Pushed Inline Diff (${newDiffId}) into TipTap`,
-        latency_ms: Math.floor(Math.random() * 4) + 2,
-      };
-
+      // No fabricated MCP log: the Composer is a local template, not an MCP call.
       return {
         composerMessages: [...state.composerMessages, userMsg, assistantMsg],
         diffProposals: [newDiff, ...state.diffProposals],
-        mcpLogs: [newMcpLog, ...state.mcpLogs],
       };
     }),
 

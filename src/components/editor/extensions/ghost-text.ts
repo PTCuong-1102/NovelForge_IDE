@@ -29,8 +29,8 @@ export function buildContextualGhostSuggestion(
   }
 
   const lower = trimmed.toLowerCase();
-  const povName = chapter.pov_character_name || 'Lâm Vũ Linh';
-  const locName = chapter.location_tag?.replace(/^#/, '') || 'Bến Cảng Đông';
+  const povName = chapter.pov_character_name || 'nhân vật chính';
+  const locName = chapter.location_tag?.replace(/^#/, '') || 'bối cảnh hiện tại';
 
   // Detect mentioned Lorebook entities in the current paragraph for grounded RAG context
   const mentionedChar = entities.find(
