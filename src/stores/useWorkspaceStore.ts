@@ -234,6 +234,10 @@ const persistAllChapters = () => {
 const canWriteToDisk = (s: WorkspaceState): boolean =>
   isTauri() && !s.isDemoData && Boolean(s.rootPath);
 
+/** Asks the user to confirm a destructive action; proceeds when there is no UI. */
+const askConfirm = (message: string): boolean =>
+  typeof window === 'undefined' ? true : window.confirm(message);
+
 // --- SQLite index sync (debounced; only for real desktop projects) ---
 let sqliteSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -729,19 +733,21 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         await get().flushAllSaves();
 
         const snapshotState = get();
+        const snap = snapshotState.snapshots.find((s) => s.id === snapshotId);
+        const projectRoot = snapshotState.rootPath;
+        const isRealProject =
+          isTauri() && !snapshotState.isDemoData && Boolean(projectRoot);
 
-        if (
-          isTauri() &&
-          !snapshotState.isDemoData &&
-          snapshotState.rootPath
-        ) {
-          const projectRoot = snapshotState.rootPath;
-          const snap = snapshotState.snapshots.find((s) => s.id === snapshotId);
-          const confirmed = window.confirm(
-            `Khôi phục snapshot "${snap?.label ?? snapshotId}"?\n\nChỉ manuscript/ và lorebook/ sẽ được ghi đè theo nội dung tại thời điểm snapshot. Các tệp khác không bị ảnh hưởng, và lịch sử git không bị xóa.`
-          );
-          if (!confirmed) return;
+        // One confirmation for every mode — the demo restore rewrites the
+        // in-memory manuscript too.
+        const confirmed = askConfirm(
+          isRealProject
+            ? `Khôi phục snapshot "${snap?.label ?? snapshotId}"?\n\nChỉ manuscript/ và lorebook/ sẽ được ghi đè theo nội dung tại thời điểm snapshot. Các tệp khác không bị ảnh hưởng, và lịch sử git không bị xóa.`
+            : `Khôi phục snapshot "${snap?.label ?? snapshotId}"?\n\n(Chế độ demo — chỉ khôi phục trong bộ nhớ của phiên, không ghi xuống đĩa.)`
+        );
+        if (!confirmed) return;
 
+        if (isRealProject && projectRoot) {
           set({ saveStatus: 'saving' });
           const res = await invokeSafe('restore_snapshot', {
             projectRoot,

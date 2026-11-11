@@ -401,8 +401,7 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
     );
   });
 
-  it('18. the lossless raw Markdown keeps custom frontmatter keys and their order', () => {
-    const chapter = {
+  it('18. the lossless raw Markdown keeps custom frontmatter keys and their order', () => {    const chapter = {
       ...mockChapter8,
       extra_frontmatter: { weather: 'Mưa axit' },
       frontmatter_keys_order: ['id', 'title', 'weather'],
@@ -422,5 +421,19 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
       'the original key order must be preserved'
     );
     assert.strictEqual(reparsed.frontmatter.id, 'ch_08');
+  });
+
+  it('19. every replace_synonym quick fix carries its replacement text', () => {
+    const issues = runContinuityLinterEngine(mockChapter8, mockEntities);
+    const synonymFixes = issues
+      .flatMap((i) => i.quick_fixes)
+      .filter((f) => f.action === 'replace_synonym');
+    assert.ok(synonymFixes.length > 0, 'there must be a synonym quick fix');
+    for (const fix of synonymFixes) {
+      assert.ok(
+        fix.replacement && fix.replacement.length > 0,
+        'a replace_synonym quick fix must carry the replacement text'
+      );
+    }
   });
 });

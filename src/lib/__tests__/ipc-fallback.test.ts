@@ -249,8 +249,7 @@ test('Workspace store disk-save flush behaviour', async (t) => {
     );
   });
 
-  await t.test('12. the sample agent activity never survives into a real project', () => {
-    useWorkspaceStore.getState().loadDemoProject();
+  await t.test('12. the sample agent activity never survives into a real project', () => {    useWorkspaceStore.getState().loadDemoProject();
     assert.ok(
       useAgentStore.getState().mcpLogs.length > 0,
       'the sample workspace shows the sample activity'
@@ -261,5 +260,26 @@ test('Workspace store disk-save flush behaviour', async (t) => {
     assert.strictEqual(useAgentStore.getState().composerMessages.length, 0);
     assert.strictEqual(useAgentStore.getState().diffProposals.length, 0);
     assert.strictEqual(useAgentStore.getState().pinnedContextIds.length, 0);
+  });
+
+  await t.test('13. the demo snapshot restore asks for confirmation', async () => {
+    const confirmCalls: string[] = [];
+    (globalThis as unknown as { window: unknown }).window = {
+      confirm: (message: string) => {
+        confirmCalls.push(message);
+        return true;
+      },
+    };
+    try {
+      useWorkspaceStore.getState().loadDemoProject();
+      await useWorkspaceStore.getState().restoreSnapshot('snap-missing');
+      assert.strictEqual(
+        confirmCalls.length,
+        1,
+        'the demo restore must ask for confirmation exactly once'
+      );
+    } finally {
+      delete (globalThis as unknown as { window?: unknown }).window;
+    }
   });
 });

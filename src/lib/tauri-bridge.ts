@@ -485,6 +485,11 @@ export function runContinuityLinterEngine(
 
   // Rule 3: Style & Pacing Warning (Repetition of two-word phrases or adjectives like "lạnh lẽo" >= 3 times in chapter)
   const trackedPhrases = ['lạnh lẽo', 'nặng nề', 'bóng tối'];
+  const pacingSynonyms: Record<string, string> = {
+    'lạnh lẽo': 'buốt lạnh',
+    'nặng nề': 'nặng trĩu',
+    'bóng tối': 'bóng ngầm',
+  };
   for (const phrase of trackedPhrases) {
     let totalOccurrences = 0;
     let firstParaIdx = -1;
@@ -514,8 +519,9 @@ export function runContinuityLinterEngine(
           quick_fixes: [
             {
               id: 'qf-synonym',
-              label: `1. Thay thế "${phrase}" dư thừa bằng từ giàu hình ảnh hơn ("tê buốt", "ẩm mục")`,
+              label: `1. Thay thế "${phrase}" dư thừa bằng "${pacingSynonyms[phrase] ?? phrase}"`,
               action: 'replace_synonym',
+              replacement: pacingSynonyms[phrase] ?? phrase,
             },
             {
               id: 'qf-ignore-rep',

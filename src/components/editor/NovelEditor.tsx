@@ -406,7 +406,11 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   };
 
   // Quick fix resolution
-  const handleApplyQuickFix = (issue: ContinuityIssue, action: string) => {
+  const handleApplyQuickFix = (
+    issue: ContinuityIssue,
+    quickFix: ContinuityIssue['quick_fixes'][number]
+  ) => {
+    const action = quickFix.action;
     if (action === 'mark_flashback') {
       const updated = [...chapter.paragraphs];
       updated[issue.paragraph_index] = `[Hồi tưởng] ${updated[issue.paragraph_index]}`;
@@ -419,16 +423,13 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
       setActiveIssuePopover(null);
     } else if (action === 'replace_synonym') {
       const updated = [...chapter.paragraphs];
-      if (issue.matched_text === 'lạnh lẽo') {
-        updated[issue.paragraph_index] = updated[issue.paragraph_index].replace(
-          /lạnh lẽo/g,
-          'buốt lạnh'
-        );
-      } else if (issue.matched_text === 'tóc dài') {
-        updated[issue.paragraph_index] = updated[issue.paragraph_index].replace(
-          /tóc dài/g,
-          'mái tóc ngắn ngang vai'
-        );
+      const replacement = quickFix.replacement;
+      if (replacement) {
+        // The replacement travels with the quick fix, so every attribute
+        // conflict is handled — not only the two hardcoded phrases.
+        updated[issue.paragraph_index] = updated[issue.paragraph_index]
+          .split(issue.matched_text)
+          .join(replacement);
       }
       updateChapterParagraphs(chapter.id, updated);
       setActiveIssuePopover(null);
@@ -1137,7 +1138,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
               <button
                 key={qf.id}
                 onClick={() =>
-                  handleApplyQuickFix(activeIssuePopover.issue, qf.action)
+                  handleApplyQuickFix(activeIssuePopover.issue, qf)
                 }
                 className="text-left text-xs p-2 rounded-lg bg-canvas hover:opacity-90 border border-border text-primary font-semibold transition-colors"
               >

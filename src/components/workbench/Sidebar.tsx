@@ -737,7 +737,7 @@ export const Sidebar: React.FC = () => {
                           ) {
                             const replacement = qf.replacement;
                             applyParagraphFix(issue, (text) =>
-                              text.replace(issue.matched_text, replacement)
+                              text.split(issue.matched_text).join(replacement)
                             );
                           }
                         }}

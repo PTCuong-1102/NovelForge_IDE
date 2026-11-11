@@ -72,4 +72,20 @@ describe('Continuity quick fix & snapshot restore guard tests', () => {
       'the attribute rule must use the shared conflict table'
     );
   });
+
+  it('5. The editor quick fix uses the replacement carried by the quick fix', () => {
+    const editor = read('src/components/editor/NovelEditor.tsx');
+    assert(
+      !editor.includes("issue.matched_text === 'lạnh lẽo'"),
+      'the editor must not hardcode the pacing phrase'
+    );
+    assert(
+      !editor.includes("issue.matched_text === 'tóc dài'"),
+      'the editor must not hardcode the hair phrase'
+    );
+    assert(
+      editor.includes('quickFix.replacement'),
+      'the editor must use the replacement carried by the quick fix'
+    );
+  });
 });
