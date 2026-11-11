@@ -71,8 +71,11 @@ pub fn replace_whole_word(text: &str, from: &str, to: &str) -> Option<String> {
             cursor = end;
             replaced = true;
         } else {
-            result.push_str(&text[cursor..start + 1]);
-            cursor = start + 1;
+            // The token is glued to another word: skip it, but advance by whole
+            // characters so a multi-byte character is never cut in half.
+            let step = text[start..].chars().next().map_or(1, char::len_utf8);
+            result.push_str(&text[cursor..start + step]);
+            cursor = start + step;
         }
     }
     result.push_str(&text[cursor..]);
@@ -100,6 +103,18 @@ mod tests {
         );
         assert_eq!(replace_whole_word("Anh bước đi.", "An", "Bình"), None);
         assert_eq!(replace_whole_word("bất kỳ câu nào", "", "Bình"), None);
+    }
+
+    #[test]
+    fn replace_whole_word_never_splits_a_multi_byte_character() {
+        // "Ân1" — the token is glued to a digit, so it must be skipped, but the
+        // scan may only advance by whole characters.
+        assert_eq!(replace_whole_word("Ân1 rõ", "Ân", "An"), None);
+        assert_eq!(
+            replace_whole_word("Lâm Vũ Linh", "Lâm", "Bình"),
+            Some("Bình Vũ Linh".to_string())
+        );
+        assert_eq!(replace_whole_word("Đông Ân", "Đông", "Tây"), Some("Tây Ân".to_string()));
     }
 
     #[test]

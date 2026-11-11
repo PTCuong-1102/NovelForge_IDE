@@ -1,6 +1,7 @@
 use crate::ai_bridge::mcp_server::{list_novelforge_mcp_tools, McpToolCallResult, McpToolSpec};
 use crate::ai_bridge::rag_engine::{hybrid_search_lore_sqlite, RagSearchResult};
 use crate::core_engine::indexer::init_sqlite_db;
+use crate::core_engine::paths::canonical_within;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::Path;
@@ -132,10 +133,21 @@ pub async fn dismiss_edit_proposal(
     project_root: String,
     proposal_id: String,
 ) -> Result<(), String> {
-    let dir = Path::new(&project_root)
-        .join(".novelforge")
-        .join("proposals");
-    let path = dir.join(format!("{proposal_id}.json"));
+    // The id becomes a file name: only a plain identifier is accepted.
+    if proposal_id.is_empty()
+        || !proposal_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!("Invalid proposal_id: {proposal_id}"));
+    }
+
+    let dir = Path::new(&project_root).join(".novelforge").join("proposals");
+    if !dir.exists() {
+        return Err(format!("Proposal not found: {proposal_id}"));
+    }
+    let path = canonical_within(&dir, Path::new(&format!("{proposal_id}.json")))
+        .map_err(|e| format!("Invalid proposal_id: {e}"))?;
     if !path.exists() {
         return Err(format!("Proposal not found: {proposal_id}"));
     }
@@ -164,4 +176,57 @@ pub async fn search_lore_rag(
     let conn = init_sqlite_db(&db_path).map_err(|e| e.to_string())?;
     hybrid_search_lore_sqlite(&conn, &query, entity_type.as_deref(), 8)
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn dismiss_edit_proposal_marks_the_proposal_resolved() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        let proposals = dir.path().join(".novelforge").join("proposals");
+        std::fs::create_dir_all(&proposals).unwrap();
+        std::fs::write(
+            proposals.join("prop-1.json"),
+            r#"{"id":"prop-1","status":"proposed"}"#,
+        )
+        .unwrap();
+
+        dismiss_edit_proposal(root, "prop-1".to_string()).await.unwrap();
+
+        let raw = std::fs::read_to_string(proposals.join("prop-1.json")).unwrap();
+        let value: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            value.get("status").and_then(|s| s.as_str()),
+            Some("resolved")
+        );
+    }
+
+    #[tokio::test]
+    async fn dismiss_edit_proposal_rejects_path_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        let proposals = dir.path().join(".novelforge").join("proposals");
+        std::fs::create_dir_all(&proposals).unwrap();
+        // A file outside the proposals directory must never be touched.
+        std::fs::write(dir.path().join("escaped.json"), "ORIGINAL").unwrap();
+
+        for evil in ["../../escaped", "..\\..\\escaped", "sub/dir", ".."] {
+            let err = dismiss_edit_proposal(root.clone(), evil.to_string())
+                .await
+                .unwrap_err();
+            assert!(
+                err.contains("proposal_id"),
+                "a traversing id must be rejected, got: {err}"
+            );
+        }
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("escaped.json")).unwrap(),
+            "ORIGINAL",
+            "no file outside the proposals directory may be touched"
+        );
+    }
 }

@@ -158,7 +158,7 @@ fn load_chapters(root: &Path) -> Vec<ChapterRecord> {
                 let path = entry.path();
                 if path.is_dir() {
                     walk(&path, out);
-                } else if path.extension().map_or(false, |e| e == "md") {
+                } else if path.extension().is_some_and(|e| e == "md") {
                     out.push(path);
                 }
             }
@@ -291,7 +291,7 @@ fn load_character_specs(root: &Path) -> Vec<LoreCharacterSpec> {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().map_or(true, |e| e != "md") {
+        if path.extension().is_none_or(|e| e != "md") {
             continue;
         }
         let Ok(raw) = fs::read_to_string(&path) else {
