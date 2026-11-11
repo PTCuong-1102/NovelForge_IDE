@@ -262,8 +262,7 @@ test('Workspace store disk-save flush behaviour', async (t) => {
     assert.strictEqual(useAgentStore.getState().pinnedContextIds.length, 0);
   });
 
-  await t.test('13. the demo snapshot restore asks for confirmation', async () => {
-    const confirmCalls: string[] = [];
+  await t.test('13. the demo snapshot restore asks for confirmation', async () => {    const confirmCalls: string[] = [];
     (globalThis as unknown as { window: unknown }).window = {
       confirm: (message: string) => {
         confirmCalls.push(message);
@@ -281,5 +280,56 @@ test('Workspace store disk-save flush behaviour', async (t) => {
     } finally {
       delete (globalThis as unknown as { window?: unknown }).window;
     }
+  });
+
+  await t.test('14. renaming a chapter or an entity updates the open tab title', () => {
+    useWorkspaceStore.setState({
+      chapters: [makeChapter('ch_01', 1, 'manuscript/act-01/ch-01.md')],
+      entities: [
+        {
+          id: 'char_01',
+          entity_type: 'character',
+          title: 'Tên cũ',
+          aliases: [],
+          file_path: 'lorebook/characters/linh.md',
+          status: 'alive',
+          tags: [],
+          summary: '',
+          body: '',
+          updated_at: '',
+        },
+      ],
+      openTabs: [
+        {
+          id: 'tab-ch_01',
+          title: 'Chương cũ',
+          type: 'chapter',
+          targetId: 'ch_01',
+          pane: 'primary',
+        },
+        {
+          id: 'tab-char_01',
+          title: 'Tên cũ',
+          type: 'lore-entity',
+          targetId: 'char_01',
+          pane: 'secondary',
+        },
+      ],
+    });
+
+    useWorkspaceStore.getState().updateChapterMetadata('ch_01', { title: 'Chương mới' });
+    useWorkspaceStore.getState().updateEntity('char_01', { title: 'Tên mới' });
+
+    const tabs = useWorkspaceStore.getState().openTabs;
+    assert.strictEqual(
+      tabs.find((t) => t.targetId === 'ch_01')?.title,
+      'Chương mới',
+      'the chapter tab must show the new title'
+    );
+    assert.strictEqual(
+      tabs.find((t) => t.targetId === 'char_01')?.title,
+      'Tên mới',
+      'the entity tab must show the new title'
+    );
   });
 });

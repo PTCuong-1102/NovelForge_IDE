@@ -331,6 +331,24 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
       return;
     }
 
+    // Tab accepts and Esc rejects the inline diff of the focused paragraph.
+    const pendingDiff = pendingDiffs.find((d) => d.paragraph_index === pIdx);
+    if (pendingDiff) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        handleParagraphChange(pIdx, pendingDiff.proposed_text);
+        resolveDiffProposal(pendingDiff.id, 'accepted');
+        void dismissProposalFile(pendingDiff.id);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        resolveDiffProposal(pendingDiff.id, 'rejected');
+        void dismissProposalFile(pendingDiff.id);
+        return;
+      }
+    }
+
     // Tab accepts AI Ghost Text suggestion when cursor is at the end of the paragraph
     if (e.key === 'Tab' && ghostAiEnabled && currentGhostSuggestion) {
       e.preventDefault();
@@ -373,9 +391,31 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     }
     const fm = parsed.frontmatter;
     const metadataPatch: Partial<ChapterDocument> = {};
-    if (typeof fm.title === 'string' && fm.title.trim()) {
-      metadataPatch.title = fm.title.trim();
-    }
+
+    const text = (key: string): string | undefined => {
+      const value = fm[key];
+      return typeof value === 'string' ? value : undefined;
+    };
+    const numeric = (key: string): number | undefined => {
+      const value = fm[key];
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string' && value.trim() !== '') {
+        const parsedNumber = Number(value);
+        return Number.isFinite(parsedNumber) ? parsedNumber : undefined;
+      }
+      return undefined;
+    };
+
+    // Every standard chapter field of the raw view is mapped back, so editing
+    // the YAML in the raw Markdown view never drops a field.
+    const title = text('title');
+    if (title?.trim()) metadataPatch.title = title.trim();
+    const actId = text('act_id');
+    if (actId !== undefined) metadataPatch.act_id = actId;
+    const actTitle = text('act_title');
+    if (actTitle !== undefined) metadataPatch.act_title = actTitle;
+    const order = numeric('order');
+    if (order !== undefined) metadataPatch.order = order;
     if (
       fm.status === 'draft' ||
       fm.status === 'editing' ||
@@ -383,12 +423,20 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     ) {
       metadataPatch.status = fm.status;
     }
-    if (typeof fm.story_date === 'string') {
-      metadataPatch.story_date = fm.story_date;
-    }
-    if (typeof fm.location_tag === 'string') {
-      metadataPatch.location_tag = fm.location_tag;
-    }
+    const povId = text('pov_character_id');
+    if (povId !== undefined) metadataPatch.pov_character_id = povId;
+    const povName = text('pov_character_name');
+    if (povName !== undefined) metadataPatch.pov_character_name = povName;
+    const storyDate = text('story_date');
+    if (storyDate !== undefined) metadataPatch.story_date = storyDate;
+    const storyYear = numeric('story_year');
+    if (storyYear !== undefined) metadataPatch.story_year = storyYear;
+    const locationId = text('location_id');
+    if (locationId !== undefined) metadataPatch.location_id = locationId;
+    const locationTag = text('location_tag');
+    if (locationTag !== undefined) metadataPatch.location_tag = locationTag;
+    const targetWords = numeric('target_words');
+    if (targetWords !== undefined) metadataPatch.target_words = targetWords;
     if (typeof fm.is_flashback === 'boolean') {
       metadataPatch.is_flashback = fm.is_flashback;
     }

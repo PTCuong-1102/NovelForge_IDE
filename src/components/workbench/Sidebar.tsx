@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   FileText,
   Folder,
@@ -51,6 +51,7 @@ export const Sidebar: React.FC = () => {
     ignoredIssueIds,
     setActiveChapterId,
     setFocusedParagraphIndex,
+    findUsagesEntityId,
   } = useEditorStore();
 
   const [expandedActs, setExpandedActs] = useState<Record<string, boolean>>({});
@@ -64,6 +65,17 @@ export const Sidebar: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [newBranchInput, setNewBranchInput] = useState('');
   const [showNewBranchInput, setShowNewBranchInput] = useState(false);
+
+  // "Xem xuất hiện" opens the search view pre-filled with the entity name.
+  useEffect(() => {
+    if (!findUsagesEntityId) return;
+    const entity = entities.find((e) => e.id === findUsagesEntityId);
+    if (entity) {
+      setSearchQuery(entity.title);
+    }
+    // Reset so the same entity can be looked up again.
+    openFindUsages(null);
+  }, [findUsagesEntityId, entities, openFindUsages]);
 
   const toggleAct = (actId: string) => {
     setExpandedActs((prev) => ({
@@ -608,8 +620,15 @@ export const Sidebar: React.FC = () => {
                     <span className="flex items-center gap-1">
                       <Clock size={11} /> {snap.timestamp}
                     </span>
-                    <span className="semantic-success-text font-mono font-bold">
-                      +{snap.word_count_delta} từ
+                    <span
+                      className={`font-mono font-bold ${
+                        snap.word_count_delta < 0
+                          ? 'semantic-warning-text'
+                          : 'semantic-success-text'
+                      }`}
+                    >
+                      {snap.word_count_delta >= 0 ? '+' : ''}
+                      {snap.word_count_delta} từ
                     </span>
                   </div>
                   <div className="pt-1.5 border-t border-border/60 flex justify-end">

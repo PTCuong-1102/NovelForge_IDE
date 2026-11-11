@@ -472,6 +472,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               ? { ...ch, ...patch, updated_at: new Date().toISOString() }
               : ch
           ),
+          // The open tab must follow the new title.
+          openTabs: patch.title
+            ? state.openTabs.map((t) =>
+                t.targetId === chapterId ? { ...t, title: patch.title! } : t
+              )
+            : state.openTabs,
         }));
         persistChapter(chapterId);
       },
@@ -483,6 +489,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               ? { ...e, ...patch, updated_at: new Date().toISOString() }
               : e
           ),
+          openTabs: patch.title
+            ? state.openTabs.map((t) =>
+                t.targetId === entityId ? { ...t, title: patch.title! } : t
+              )
+            : state.openTabs,
         }));
         persistEntity(entityId);
       },

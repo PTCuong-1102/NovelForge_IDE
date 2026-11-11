@@ -48,11 +48,14 @@ export default function WorkbenchPage() {
     rootPath,
     isDemoData,
     reloadCurrentProjectFromDisk,
+    activeActivity,
+    setActiveActivity,
   } = useWorkspaceStore();
 
   const {
     openCommandPalette,
     openRefactorModal,
+    findUsagesEntityId,
     activeChapterId,
   } = useEditorStore();
 
@@ -70,6 +73,14 @@ export default function WorkbenchPage() {
       void reloadCurrentProjectFromDisk();
     }
   }, [rootPath, isDemoData, chapters.length, reloadCurrentProjectFromDisk]);
+
+  // "Xem xuất hiện" must work even when the left sidebar is closed.
+  useEffect(() => {
+    if (!findUsagesEntityId) return;
+    if (activeActivity !== 'search') {
+      setActiveActivity('search');
+    }
+  }, [findUsagesEntityId, activeActivity, setActiveActivity]);
 
   // Global Keyboard Shortcuts (VS Code & IntelliJ Ergonomics)
   useEffect(() => {

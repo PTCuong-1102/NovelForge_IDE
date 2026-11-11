@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { ContinuityIssue, LoreEntity } from '@/lib/tauri-bridge';
+import { findWholeWordOccurrences } from '@/lib/word-boundary';
 
 export interface EntityHighlighterOptions {
   getEntities: () => LoreEntity[];
@@ -15,13 +16,7 @@ export const entityHighlighterPluginKey = new PluginKey('novelforgeEntityHighlig
 
 interface PatternSpec {
   token: string;
-  tokenLower: string;
   entity: LoreEntity;
-}
-
-function isWordBoundaryChar(ch: string | undefined): boolean {
-  if (!ch) return true;
-  return /[\s.,!?;:()[\]{}"'“”‘’—–\-…/\\<>]/.test(ch);
 }
 
 export const EntityAndLinterExtension = Extension.create<EntityHighlighterOptions>({
@@ -56,7 +51,6 @@ export const EntityAndLinterExtension = Extension.create<EntityHighlighterOption
               if (ent.title.trim()) {
                 patterns.push({
                   token: ent.title.trim(),
-                  tokenLower: ent.title.trim().toLowerCase(),
                   entity: ent,
                 });
               }
@@ -64,7 +58,6 @@ export const EntityAndLinterExtension = Extension.create<EntityHighlighterOption
                 if (alias.trim()) {
                   patterns.push({
                     token: alias.trim(),
-                    tokenLower: alias.trim().toLowerCase(),
                     entity: ent,
                   });
                 }
@@ -103,21 +96,15 @@ export const EntityAndLinterExtension = Extension.create<EntityHighlighterOption
                 );
               }
 
-              const textLower = text.toLowerCase();
               const occupiedRanges: [number, number][] = [];
 
               // 2. Decorate Continuity Linter issues in this paragraph first
               const paraIssues = issues.filter((iss) => iss.paragraph_index === currentParaIdx);
               for (const iss of paraIssues) {
-                const needle = iss.matched_text.toLowerCase();
+                const needle = iss.matched_text.trim();
                 if (!needle) continue;
 
-                let searchFrom = 0;
-                while (searchFrom < textLower.length) {
-                  const idx = textLower.indexOf(needle, searchFrom);
-                  if (idx === -1) break;
-                  const endIdx = idx + needle.length;
-
+                for (const [idx, endIdx] of findWholeWordOccurrences(text, needle, true)) {
                   const fromPos = pos + 1 + idx;
                   const toPos = pos + 1 + endIdx;
 
@@ -134,42 +121,30 @@ export const EntityAndLinterExtension = Extension.create<EntityHighlighterOption
                       })
                     );
                   }
-                  searchFrom = endIdx;
                 }
               }
 
               // 3. Decorate Lorebook Entities (@Character, #Location, @Item)
               for (const pat of patterns) {
-                let searchFrom = 0;
-                while (searchFrom < textLower.length) {
-                  const idx = textLower.indexOf(pat.tokenLower, searchFrom);
-                  if (idx === -1) break;
-                  const endIdx = idx + pat.token.length;
-
-                  const validStart = isWordBoundaryChar(text[idx - 1]);
-                  const validEnd = isWordBoundaryChar(text[endIdx]);
-
+                for (const [idx, endIdx] of findWholeWordOccurrences(text, pat.token, true)) {
                   const overlaps = occupiedRanges.some(
                     ([s, e]) => !(endIdx <= s || idx >= e)
                   );
+                  if (overlaps) continue;
 
-                  if (validStart && validEnd && !overlaps) {
-                    const fromPos = pos + 1 + idx;
-                    const toPos = pos + 1 + endIdx;
-                    if (toPos <= pos + node.nodeSize) {
-                      occupiedRanges.push([idx, endIdx]);
-                      const isLoc = pat.entity.entity_type === 'location';
-                      decorations.push(
-                        Decoration.inline(fromPos, toPos, {
-                          class: isLoc ? 'lore-location-pill' : 'entity-mention-pill',
-                          'data-entity-id': pat.entity.id,
-                          title: `Lorebook: ${pat.entity.title} — Nhấp để xem hồ sơ nhanh`,
-                        })
-                      );
-                    }
-                  }
+                  const fromPos = pos + 1 + idx;
+                  const toPos = pos + 1 + endIdx;
+                  if (toPos > pos + node.nodeSize) continue;
 
-                  searchFrom = endIdx;
+                  occupiedRanges.push([idx, endIdx]);
+                  const isLoc = pat.entity.entity_type === 'location';
+                  decorations.push(
+                    Decoration.inline(fromPos, toPos, {
+                      class: isLoc ? 'lore-location-pill' : 'entity-mention-pill',
+                      'data-entity-id': pat.entity.id,
+                      title: `Lorebook: ${pat.entity.title} — Nhấp để xem hồ sơ nhanh`,
+                    })
+                  );
                 }
               }
 
