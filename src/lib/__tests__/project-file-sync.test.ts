@@ -42,25 +42,48 @@ describe('External file rename reconciliation', () => {
     ]);
   });
 
-  it('3. ignores lorebook files, whose name follows the title', () => {
+  it('3. restores a lorebook file whose name no longer follows the title', () => {
     const result = reconcileIdentifiers(
       [{ id: 'char_01', file_path: 'lorebook/characters/lam-vu-linh.md' }],
       [
         {
           relativePath: 'lorebook/characters/linh-ha.md',
           id: 'char_01',
-          title: 'Linh Hà',
+          title: 'Lâm Vũ Linh',
         },
       ]
     );
 
+    assert.deepEqual(result.renames, [
+      {
+        id: 'char_01',
+        from: 'lorebook/characters/linh-ha.md',
+        to: 'lorebook/characters/lam-vu-linh.md',
+      },
+    ]);
     assert.deepEqual(result.filePaths, {
-      char_01: 'lorebook/characters/linh-ha.md',
+      char_01: 'lorebook/characters/lam-vu-linh.md',
     });
     assert.deepEqual(result.mismatches, []);
   });
 
-  it('4. keeps the state untouched when nothing moved', () => {
+  it('4. keeps a lorebook file that already follows the title', () => {
+    const result = reconcileIdentifiers(
+      [{ id: 'char_01', file_path: 'lorebook/characters/lam-vu-linh.md' }],
+      [
+        {
+          relativePath: 'lorebook/characters/lam-vu-linh.md',
+          id: 'char_01',
+          title: 'Lâm Vũ Linh',
+        },
+      ]
+    );
+
+    assert.deepEqual(result.renames, []);
+    assert.deepEqual(result.filePaths, {});
+  });
+
+  it('5. keeps the state untouched when nothing moved', () => {
     const result = reconcileIdentifiers(
       [{ id: 'ch_01', file_path: 'manuscript/act-01/ch-01-khoi-dau.md' }],
       [

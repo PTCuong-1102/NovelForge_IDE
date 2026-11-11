@@ -3,12 +3,13 @@ pub mod commands;
 pub mod core_engine;
 pub mod vcs;
 
-use commands::{ai_cmd, fs_cmd, linter_cmd, lore_cmd};
+use commands::{ai_cmd, fs_cmd, linter_cmd, lore_cmd, watch_cmd};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(watch_cmd::ProjectWatcher::default())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::init_project_workspace,
             fs_cmd::sync_project_sqlite,
@@ -17,6 +18,8 @@ pub fn run() {
             fs_cmd::write_markdown_file,
             fs_cmd::rename_markdown_file,
             fs_cmd::scan_project_identifiers,
+            watch_cmd::start_project_watcher,
+            watch_cmd::stop_project_watcher,
             lore_cmd::list_entities,
             lore_cmd::upsert_entity,
             lore_cmd::find_entity_usages,

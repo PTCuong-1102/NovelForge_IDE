@@ -165,8 +165,12 @@ describe('Workspace consistency guard tests', () => {
   it('10. Files renamed outside the application are noticed', () => {
     const page = read('src/app/page.tsx');
     assert(
-      page.includes("window.addEventListener('focus'"),
-      'the app must watch for the window focus'
+      page.includes('novelforge:project-files-changed'),
+      'the app must listen to the project file watcher'
+    );
+    assert(
+      page.includes('start_project_watcher'),
+      'the app must start the watcher'
     );
     assert(
       page.includes('reconcileWithDisk'),
@@ -177,6 +181,12 @@ describe('Workspace consistency guard tests', () => {
     assert(
       store.includes("'scan_project_identifiers'"),
       'the store must scan the identifiers of the project'
+    );
+
+    const watcher = read('src-tauri/src/commands/watch_cmd.rs');
+    assert(
+      watcher.includes('PROJECT_FILES_CHANGED'),
+      'the watcher must announce the changed files'
     );
   });
 });

@@ -1,4 +1,4 @@
-import { chapterIdFromFileName } from './chapter-file-name';
+import { chapterIdFromFileName, titleSlug } from './chapter-file-name';
 
 export interface DiskFileIdentifier {
   relativePath: string;
@@ -9,7 +9,9 @@ export interface DiskFileIdentifier {
 export interface IdentifierReconciliation {
   /** The new relative path of every id whose file moved on disk. */
   filePaths: Record<string, string>;
-  /** Files whose name no longer matches the id they declare. */
+  /** Lorebook files whose name no longer follows the title slug. */
+  renames: Array<{ id: string; from: string; to: string }>;
+  /** Chapter files whose name no longer matches the id they declare. */
   mismatches: Array<{
     id: string;
     relativePath: string;
@@ -20,9 +22,10 @@ export interface IdentifierReconciliation {
 /**
  * Compares the identifiers held in memory with the ones read from the disk.
  *
- * A file renamed outside the application keeps its frontmatter id, so the id
- * still matches — only the path moved. A chapter whose file name carries a
- * different id was renamed by hand: the app reports it instead of guessing.
+ * A chapter file name carries its id, so a rename done outside the application
+ * is reported instead of being reverted — the id would be lost. A lorebook file
+ * name only follows the title slug, so it can be restored without losing
+ * anything.
  */
 export function reconcileIdentifiers(
   current: Array<{ id: string; file_path: string }>,
@@ -30,28 +33,45 @@ export function reconcileIdentifiers(
 ): IdentifierReconciliation {
   const byId = new Map(disk.map((file) => [file.id, file]));
   const filePaths: Record<string, string> = {};
+  const renames: IdentifierReconciliation['renames'] = [];
   const mismatches: IdentifierReconciliation['mismatches'] = [];
 
   for (const item of current) {
     const found = byId.get(item.id);
     if (!found) continue;
 
-    if (found.relativePath !== item.file_path) {
-      filePaths[item.id] = found.relativePath;
+    const diskName = found.relativePath.split('/').pop() ?? '';
+
+    if (found.relativePath.startsWith('manuscript/')) {
+      // The disk path wins; a file name carrying another id is reported.
+      if (found.relativePath !== item.file_path) {
+        filePaths[item.id] = found.relativePath;
+      }
+      const idInFileName = chapterIdFromFileName(diskName);
+      if (idInFileName && idInFileName !== item.id) {
+        mismatches.push({
+          id: item.id,
+          relativePath: found.relativePath,
+          idInFileName,
+        });
+      }
+      continue;
     }
 
-    if (!found.relativePath.startsWith('manuscript/')) continue;
-
-    const fileName = found.relativePath.split('/').pop() ?? '';
-    const idInFileName = chapterIdFromFileName(fileName);
-    if (idInFileName && idInFileName !== item.id) {
-      mismatches.push({
-        id: item.id,
-        relativePath: found.relativePath,
-        idInFileName,
-      });
+    // A lorebook file name follows the title slug: restore it when it drifted.
+    const expectedName = `${titleSlug(found.title)}.md`;
+    if (found.title && diskName !== expectedName) {
+      const directory = found.relativePath.slice(
+        0,
+        found.relativePath.length - diskName.length
+      );
+      const to = `${directory}${expectedName}`;
+      renames.push({ id: item.id, from: found.relativePath, to });
+      filePaths[item.id] = to;
+    } else if (found.relativePath !== item.file_path) {
+      filePaths[item.id] = found.relativePath;
     }
   }
 
-  return { filePaths, mismatches };
+  return { filePaths, renames, mismatches };
 }

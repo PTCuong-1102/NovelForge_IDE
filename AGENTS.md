@@ -7,7 +7,7 @@ IDE desktop dành cho người viết tiểu thuyết. **Trạng thái (2026-11-
 - **Desktop (Tauri v2 + Rust) chạy thật:** mở thư mục project qua dialog, đọc/ghi `manuscript/` và `lorebook/` thẳng xuống đĩa (Ctrl+S), SQLite index (`.novelforge/index.sqlite`), Linter nhất quán cốt truyện, Refactor Rename, snapshot Git thật qua `libgit2` (restore an toàn: chỉ `manuscript/` + `lorebook/`), xuất EPUB 3 / DOCX / PDF (qua print dialog).
 - **MCP stdio server** (`novelforge-ide mcp [project_root]`): 4 tool thật cho agent bên ngoài — `novel_search_lore`, `novel_get_chapter_context`, `novel_check_continuity`, `novel_propose_edit` (không bao giờ tự ghi đè file).
 - **Browser (`npm run dev`)**: chế độ **demo có chủ đích** với dữ liệu mẫu — không đọc/ghi file, các nút MCP hiển thị nhãn "Mô phỏng".
-- **Verification:** `npm test` 106/106 · `npm run typecheck` ✅ · `npm run build` ✅ · `npm run verify:utf8` ✅ · `cargo test` 40/40.
+- **Verification:** `npm test` 107/107 · `npm run typecheck` ✅ · `npm run build` ✅ · `npm run verify:utf8` ✅ · `cargo test` 41/41.
 - **planfix_02 (2026-11-11):** sửa 20 lỗi kiểm toán — round-trip Markdown/YAML không mất `# Heading` hay khóa frontmatter tuỳ chỉnh, flush đĩa trước Git snapshot/restore, `localStorage` không còn ghi đè file thật, ranh giới từ Unicode, xuất bản `***`/`>`/inline marks, duyệt đề xuất MCP trên UI.
 
 ## Đọc trước khi làm việc gì (bắt buộc)

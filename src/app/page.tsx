@@ -21,7 +21,7 @@ import { RefactorRenameModal } from '@/components/modals/RefactorRenameModal';
 import { PublishModal } from '@/components/modals/PublishModal';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useEditorStore } from '@/stores/useEditorStore';
-import { isTauri } from '@/lib/ipc';
+import { isTauri, invokeSafe } from '@/lib/ipc';
 import { FolderOpen, FlaskConical, X } from 'lucide-react';
 
 export default function WorkbenchPage() {
@@ -83,14 +83,32 @@ export default function WorkbenchPage() {
     }
   }, [findUsagesEntityId, activeActivity, setActiveActivity]);
 
-  // The disk is the source of truth: notice files renamed outside the app.
+  // The disk is the source of truth: watch the project files and notice renames.
   useEffect(() => {
     if (!isTauri() || !rootPath || isDemoData) return;
-    const handleFocus = () => {
-      void reconcileWithDisk();
+
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+
+    const setup = async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      const stop = await listen('novelforge:project-files-changed', () => {
+        void reconcileWithDisk();
+      });
+      if (disposed) {
+        stop();
+        return;
+      }
+      unlisten = stop;
+      await invokeSafe('start_project_watcher', { projectRoot: rootPath });
     };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    void setup();
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+      void invokeSafe('stop_project_watcher', {});
+    };
   }, [rootPath, isDemoData, reconcileWithDisk]);
 
   // Global Keyboard Shortcuts (VS Code & IntelliJ Ergonomics)

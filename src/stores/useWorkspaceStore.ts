@@ -1084,13 +1084,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         );
         if (!res.ok) return;
 
-        const { filePaths, mismatches } = reconcileIdentifiers(
+        const { filePaths, renames, mismatches } = reconcileIdentifiers(
           [
             ...s.chapters.map((c) => ({ id: c.id, file_path: c.file_path })),
             ...s.entities.map((e) => ({ id: e.id, file_path: e.file_path })),
           ],
           res.data
         );
+
+        // A lorebook file whose name drifted from the title is renamed back.
+        for (const rename of renames) {
+          renameProjectFile(s.rootPath, rename.from, rename.to, () => {
+            useWorkspaceStore.setState((state) => ({
+              entities: state.entities.map((e) =>
+                e.id === rename.id ? { ...e, file_path: rename.from } : e
+              ),
+            }));
+          });
+        }
 
         // Only the paths are reconciled — the text in memory stays untouched.
         if (Object.keys(filePaths).length > 0) {
