@@ -131,4 +131,26 @@ describe('Workspace consistency guard tests', () => {
       'the id changes through the dedicated field, not through the raw view'
     );
   });
+
+  it('8. The id and the file name stay in sync', () => {
+    const header = read('src/components/editor/ChapterHeaderProperties.tsx');
+    assert(
+      header.includes('chapterIdFromFileName'),
+      'the chapter sheet must be able to read the id back from the file name'
+    );
+    assert(
+      header.includes('Lấy ID từ tên tệp'),
+      'the reverse direction must be available'
+    );
+
+    const store = read('src/stores/useWorkspaceStore.ts');
+    assert(
+      store.includes('chapterFileNameForId'),
+      'the store must derive the new file name from the new id'
+    );
+    assert(
+      store.includes("invokeSafe('rename_markdown_file'"),
+      'the file must be renamed on disk'
+    );
+  });
 });

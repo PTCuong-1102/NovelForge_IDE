@@ -434,4 +434,28 @@ test('Workspace store disk-save flush behaviour', async (t) => {
     );
     assert.strictEqual(state.activeSecondaryTabId, 'tab-char_99');
   });
+
+  await t.test('17. changing a chapter id moves it to the matching file name', () => {
+    useWorkspaceStore.setState({
+      chapters: [
+        {
+          ...makeChapter('ch_01', 1, 'manuscript/act-01/ch-01-khoi-dau.md'),
+          title: 'Mở đầu',
+        },
+      ],
+      entities: [],
+      relations: [],
+      openTabs: [],
+    });
+
+    useWorkspaceStore.getState().updateChapterMetadata('ch_01', { id: 'ch_77' });
+
+    const chapter = useWorkspaceStore.getState().chapters[0];
+    assert.strictEqual(chapter.id, 'ch_77');
+    assert.strictEqual(
+      chapter.file_path,
+      'manuscript/act-01/ch-77-khoi-dau.md',
+      'the chapter file name must follow the new id'
+    );
+  });
 });

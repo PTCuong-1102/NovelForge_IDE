@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ChapterDocument, LoreEntity } from '@/lib/tauri-bridge';
+import { chapterIdFromFileName } from '@/lib/chapter-file-name';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 
 interface ChapterHeaderProps {
@@ -246,7 +247,29 @@ export const ChapterHeaderProperties: React.FC<ChapterHeaderProps> = ({
               >
                 Đổi ID
               </button>
+              <button
+                onClick={() => {
+                  const fromName = chapterIdFromFileName(
+                    chapter.file_path.split('/').pop() ?? chapter.file_path
+                  );
+                  if (fromName) setIdDraft(fromName);
+                }}
+                disabled={
+                  !chapterIdFromFileName(
+                    chapter.file_path.split('/').pop() ?? chapter.file_path
+                  )
+                }
+                title="Lấy ID kỹ thuật từ tên tệp hiện tại"
+                className="px-2.5 py-1.5 rounded-lg border border-border bg-canvas text-[11px] font-semibold text-primary disabled:opacity-40"
+              >
+                Lấy ID từ tên tệp
+              </button>
             </div>
+            <p className="text-[10px] text-muted leading-snug">
+              Tên tệp Markdown theo quy ước{' '}
+              <code className="font-mono">&lt;id&gt;-&lt;slug tiêu đề&gt;.md</code> —
+              đổi ID sẽ đổi luôn tên tệp.
+            </p>
           </div>
 
           <div className="flex items-end pb-1">

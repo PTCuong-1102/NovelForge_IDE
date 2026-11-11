@@ -34,8 +34,8 @@ pkg-config --exists gdk-3.0 webkit2gtk-4.1 && echo "system deps OK"
 
 ```bash
 npm install
-npm test                 # 93 tests
-cd src-tauri && cargo test   # 36 tests
+npm test                 # 99 tests
+cd src-tauri && cargo test   # 39 tests
 cd ..
 npm run build            # static export -> out/
 npm run tauri dev        # desktop dev (hot reload frontend)

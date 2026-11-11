@@ -120,6 +120,35 @@ pub async fn write_markdown_file(
         .map_err(|e| format!("Failed to write {}: {}", safe_path.display(), e))
 }
 
+/// Renames a markdown file inside the project — used when a chapter changes
+/// its technical id and the file name must follow.
+#[tauri::command]
+pub async fn rename_markdown_file(
+    project_root: String,
+    from_relative_path: String,
+    to_relative_path: String,
+) -> Result<(), String> {
+    let root = Path::new(&project_root);
+    let from = canonical_within(root, Path::new(&from_relative_path))
+        .map_err(|e| format!("Security violation: {e}"))?;
+    let to = canonical_within(root, Path::new(&to_relative_path))
+        .map_err(|e| format!("Security violation: {e}"))?;
+
+    if !from.exists() {
+        return Err(format!("Source file not found: {from_relative_path}"));
+    }
+    if to.exists() {
+        return Err(format!(
+            "Target file already exists: {to_relative_path}"
+        ));
+    }
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::rename(&from, &to).map_err(|e| format!("Cannot rename file: {e}"))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +192,70 @@ mod tests {
         assert!(written.contains("# Chương 1: Mở đầu"), "heading lost");
         assert!(written.contains("***"), "scene break lost");
         assert!(written.contains("## Cảnh 2"), "sub-heading lost");
+    }
+
+    #[tokio::test]
+    async fn rename_markdown_file_moves_the_file_inside_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        std::fs::create_dir_all(dir.path().join("manuscript/act-01")).unwrap();
+        std::fs::write(
+            dir.path().join("manuscript/act-01/ch-01.md"),
+            "nội dung",
+        )
+        .unwrap();
+
+        rename_markdown_file(
+            root,
+            "manuscript/act-01/ch-01.md".to_string(),
+            "manuscript/act-01/ch-77-khoi-dau.md".to_string(),
+        )
+        .await
+        .unwrap();
+
+        assert!(!dir.path().join("manuscript/act-01/ch-01.md").exists());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("manuscript/act-01/ch-77-khoi-dau.md"))
+                .unwrap(),
+            "nội dung"
+        );
+    }
+
+    #[tokio::test]
+    async fn rename_markdown_file_rejects_paths_outside_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        std::fs::write(dir.path().join("ch-01.md"), "nội dung").unwrap();
+
+        let err = rename_markdown_file(
+            root,
+            "ch-01.md".to_string(),
+            "../escaped.md".to_string(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("Security violation"), "got: {err}");
+        assert!(!dir.path().parent().unwrap().join("escaped.md").exists());
+    }
+
+    #[tokio::test]
+    async fn rename_markdown_file_refuses_to_overwrite_an_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        std::fs::write(dir.path().join("ch-01.md"), "một").unwrap();
+        std::fs::write(dir.path().join("ch-02.md"), "hai").unwrap();
+
+        let err = rename_markdown_file(
+            root,
+            "ch-01.md".to_string(),
+            "ch-02.md".to_string(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("already exists"), "got: {err}");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("ch-02.md")).unwrap(),
+            "hai"
+        );
     }
 }

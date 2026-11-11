@@ -17,6 +17,7 @@ import {
 } from '@/lib/ipc-demo';
 import { isTauri, invokeSafe } from '@/lib/ipc';
 import { replaceWholeWordUnicode } from '@/lib/word-boundary';
+import { chapterFileNameForId } from '@/lib/chapter-file-name';
 import { useAgentStore } from '@/stores/useAgentStore';
 import {
   loadProject,
@@ -515,6 +516,25 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             : chapterId;
         const renamed = newId !== chapterId;
 
+        // A chapter file name follows its id, so a rename moves the file too.
+        const before = get();
+        const chapter = renamed
+          ? before.chapters.find((c) => c.id === chapterId)
+          : undefined;
+        const currentFileName = chapter
+          ? (chapter.file_path.split('/').pop() ?? chapter.file_path)
+          : '';
+        const nextFileName = chapter
+          ? chapterFileNameForId(chapterId, newId, chapter.title, currentFileName)
+          : '';
+        const nextFilePath =
+          chapter && nextFileName && nextFileName !== currentFileName
+            ? `${chapter.file_path.slice(
+                0,
+                chapter.file_path.length - currentFileName.length
+              )}${nextFileName}`
+            : '';
+
         set((state) => {
           const chapters = state.chapters.map((ch) =>
             ch.id === chapterId
@@ -522,6 +542,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                   ...ch,
                   ...patch,
                   id: newId,
+                  file_path: nextFilePath || ch.file_path,
                   updated_at: new Date().toISOString(),
                 }
               : ch
@@ -551,6 +572,27 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // A pending save would still carry the old id.
           cancelPendingSave(chapterSaveTimers, chapterId);
           useAgentStore.getState().remapChapterId(chapterId, newId);
+
+          if (nextFilePath && before.rootPath && canWriteToDisk(before)) {
+            const projectRoot = before.rootPath;
+            const previousPath = chapter!.file_path;
+            void invokeSafe('rename_markdown_file', {
+              projectRoot,
+              fromRelativePath: previousPath,
+              toRelativePath: nextFilePath,
+            }).then((res) => {
+              if (res.ok) return;
+              // The rename failed: the chapter stays on its original file.
+              useWorkspaceStore.setState((state) => ({
+                chapters: state.chapters.map((c) =>
+                  c.id === newId ? { ...c, file_path: previousPath } : c
+                ),
+                ipcNotice:
+                  state.ipcNotice ??
+                  `Không đổi tên được tệp ${previousPath}: ${res.error}`,
+              }));
+            });
+          }
         }
         persistChapter(newId);
       },

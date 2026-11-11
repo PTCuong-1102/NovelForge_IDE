@@ -194,6 +194,11 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
                 Đổi ID
               </button>
             </div>
+            <p className="text-[10px] text-muted leading-snug">
+              Tên tệp Lorebook theo quy ước{' '}
+              <code className="font-mono">&lt;slug tiêu đề&gt;.md</code> — đổi ID
+              không đổi tên tệp.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1">
