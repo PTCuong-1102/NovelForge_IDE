@@ -72,7 +72,12 @@ export const RightDock: React.FC = () => {
       typeof raw.paragraph_index === 'number' ? raw.paragraph_index : 0;
 
     if (!chapterId && typeof raw.file_path === 'string') {
-      const chapter = chapters.find((c) => c.file_path === raw.file_path);
+      // The MCP bridge writes OS-native separators; chapter paths use `/`.
+      const normalize = (p: string) => p.replace(/\\/g, '/');
+      const wanted = normalize(raw.file_path);
+      const chapter = chapters.find(
+        (c) => normalize(c.file_path) === wanted
+      );
       if (!chapter) return null;
       chapterId = chapter.id;
       const firstLine = originalText.split('\n')[0]?.trim() ?? '';

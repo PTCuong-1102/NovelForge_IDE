@@ -119,3 +119,49 @@ pub async fn write_markdown_file(
         .await
         .map_err(|e| format!("Failed to write {}: {}", safe_path.display(), e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// End-to-end proof of the save path: a chapter written by the IDE must keep
+    /// its headings, its scene breaks and the custom YAML keys in their order.
+    #[tokio::test]
+    async fn write_markdown_file_keeps_headings_and_custom_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        let body = "# Chương 1: Mở đầu\n\nMưa rơi.\n\n***\n\n## Cảnh 2\n\nĐoạn kết.";
+
+        let mut frontmatter = HashMap::new();
+        frontmatter.insert("id".to_string(), serde_json::json!("ch_01"));
+        frontmatter.insert("title".to_string(), serde_json::json!("Mở đầu"));
+        frontmatter.insert("weather".to_string(), serde_json::json!("Mưa axit"));
+
+        write_markdown_file(
+            root,
+            "manuscript/act-01/ch-01.md".to_string(),
+            frontmatter,
+            Some(vec![
+                "id".to_string(),
+                "title".to_string(),
+                "weather".to_string(),
+            ]),
+            body.to_string(),
+        )
+        .await
+        .unwrap();
+
+        let written = std::fs::read_to_string(
+            dir.path().join("manuscript/act-01/ch-01.md"),
+        )
+        .unwrap();
+
+        assert!(
+            written.starts_with("---\nid: ch_01\ntitle: Mở đầu\nweather: Mưa axit\n---\n"),
+            "frontmatter order/keys changed:\n{written}"
+        );
+        assert!(written.contains("# Chương 1: Mở đầu"), "heading lost");
+        assert!(written.contains("***"), "scene break lost");
+        assert!(written.contains("## Cảnh 2"), "sub-heading lost");
+    }
+}

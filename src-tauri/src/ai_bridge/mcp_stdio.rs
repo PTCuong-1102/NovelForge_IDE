@@ -446,7 +446,7 @@ fn tool_propose_edit(root: &Path, args: &Value) -> Value {
     );
     let proposal = json!({
         "id": proposal_id,
-        "file_path": rel.to_string_lossy(),
+        "file_path": rel_str,
         "start_line": start_line,
         "end_line": end,
         "original_text": original_text,
