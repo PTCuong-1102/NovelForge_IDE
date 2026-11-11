@@ -396,9 +396,55 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
     for (id, _) in stale_rows {
         tx.execute("DELETE FROM entities WHERE id = ?1", rusqlite::params![&id])
             .map_err(|e| e.to_string())?;
+    }
+
+    // The embedding chunks are pruned against the seen ids directly: the row of
+    // a renamed entity is already gone from `entities` at this point.
+    let stale_chunks: Vec<String> = {
+        let mut stmt = tx
+            .prepare("SELECT chunk_id, entity_id FROM lore_embeddings_store")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.flatten()
+            .filter(|(_, entity_id)| !seen_entity_ids.contains(entity_id))
+            .map(|(chunk_id, _)| chunk_id)
+            .collect()
+    };
+    for chunk_id in stale_chunks {
         tx.execute(
-            "DELETE FROM lore_embeddings_store WHERE entity_id = ?1",
-            rusqlite::params![&id],
+            "DELETE FROM lore_embeddings_store WHERE chunk_id = ?1",
+            rusqlite::params![&chunk_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    // Mentions of a deleted chapter or a deleted entity are orphans too.
+    let stale_mentions: Vec<i64> = {
+        let mut stmt = tx
+            .prepare("SELECT id, source_chapter_id, target_entity_id FROM entity_mentions")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.flatten()
+            .filter(|(_, source, target)| {
+                !seen_entity_ids.contains(source) || !seen_entity_ids.contains(target)
+            })
+            .map(|(id, _, _)| id)
+            .collect()
+    };
+    for id in stale_mentions {
+        tx.execute(
+            "DELETE FROM entity_mentions WHERE id = ?1",
+            rusqlite::params![id],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -495,8 +541,7 @@ mod tests {
     }
 
     #[test]
-    fn lore_attributes_carry_the_lore_profile_into_the_linter() {
-        let raw = "---\nid: char_linh\ntype: character\ntitle: Lâm Vũ Linh\nappearance: Tóc ngắn ngang vai\npersonality: Lạnh lùng\nfaction: Aegis\nrole: Đặc vụ\n---\n\nBody";
+    fn lore_attributes_carry_the_lore_profile_into_the_linter() {        let raw = "---\nid: char_linh\ntype: character\ntitle: Lâm Vũ Linh\nappearance: Tóc ngắn ngang vai\npersonality: Lạnh lùng\nfaction: Aegis\nrole: Đặc vụ\n---\n\nBody";
         let parsed = parse_markdown_with_frontmatter(raw);
         let attributes = lore_attributes(&parsed.frontmatter);
 
@@ -510,6 +555,91 @@ mod tests {
         );
         assert_eq!(attributes.get("faction").map(|s| s.as_str()), Some("Aegis"));
         assert_eq!(attributes.get("role").map(|s| s.as_str()), Some("Đặc vụ"));
+    }
+
+    #[test]
+    fn sync_prunes_embeddings_and_mentions_of_removed_entities() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let chars = root.join("lorebook").join("characters");
+        let man = root.join("manuscript").join("act-01");
+        fs::create_dir_all(&chars).unwrap();
+        fs::create_dir_all(&man).unwrap();
+
+        fs::write(
+            chars.join("linh.md"),
+            "---\nid: char_v1\ntype: character\ntitle: Linh\n---\n\nHồ sơ Linh.",
+        )
+        .unwrap();
+        fs::write(
+            man.join("ch-01.md"),
+            "---\nid: ch_01\ntitle: Mở đầu\n---\n\nLinh bước vào.",
+        )
+        .unwrap();
+
+        sync_workspace_to_sqlite(root).unwrap();
+
+        let db = root.join(".novelforge").join("index.sqlite");
+        let conn = init_sqlite_db(&db).unwrap();
+        let chunks: i64 = conn
+            .query_row("SELECT COUNT(*) FROM lore_embeddings_store", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(chunks, 1);
+        let mentions: i64 = conn
+            .query_row("SELECT COUNT(*) FROM entity_mentions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mentions, 1, "the chapter mention must be indexed");
+
+        // The character changes its id in the frontmatter.
+        fs::write(
+            chars.join("linh.md"),
+            "---\nid: char_v2\ntype: character\ntitle: Linh\n---\n\nHồ sơ Linh.",
+        )
+        .unwrap();
+        sync_workspace_to_sqlite(root).unwrap();
+
+        let conn = init_sqlite_db(&db).unwrap();
+        let stale_chunks: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM lore_embeddings_store WHERE entity_id = 'char_v1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stale_chunks, 0,
+            "the embedding chunk of the previous id must be removed"
+        );
+        let stale_mentions: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM entity_mentions WHERE target_entity_id = 'char_v1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stale_mentions, 0,
+            "mentions of the previous id must be removed"
+        );
+
+        // The chapter disappears from disk.
+        fs::remove_file(man.join("ch-01.md")).unwrap();
+        sync_workspace_to_sqlite(root).unwrap();
+
+        let conn = init_sqlite_db(&db).unwrap();
+        let orphan_mentions: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM entity_mentions WHERE source_chapter_id = 'ch_01'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            orphan_mentions, 0,
+            "mentions of a deleted chapter must be removed"
+        );
     }
 }
 

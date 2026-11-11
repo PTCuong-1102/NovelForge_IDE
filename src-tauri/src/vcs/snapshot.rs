@@ -222,7 +222,6 @@ pub fn list_snapshots(project_root: String) -> Result<Vec<StorySnapshot>, GitErr
 
     let branch_name = head.shorthand().unwrap_or("main").to_string();
     let mut snapshots = Vec::new();
-    let mut prev_words_for_delta: Option<usize> = None;
 
     for oid_res in revwalk {
         let oid = match oid_res {
@@ -254,11 +253,6 @@ pub fn list_snapshots(project_root: String) -> Result<Vec<StorySnapshot>, GitErr
             .unwrap_or_else(|| "".to_string());
 
         let total_words = snapshot_words(msg).unwrap_or(0);
-        let word_count_delta = match prev_words_for_delta {
-            Some(newer) => (total_words as i64 - newer as i64) as i32,
-            None => 0,
-        };
-        prev_words_for_delta = Some(total_words);
 
         snapshots.push(StorySnapshot {
             id: oid.to_string(),
@@ -266,9 +260,20 @@ pub fn list_snapshots(project_root: String) -> Result<Vec<StorySnapshot>, GitErr
             branch_name: branch_name.clone(),
             label,
             timestamp: time_str,
-            word_count_delta,
+            word_count_delta: 0,
             total_words,
         });
+    }
+
+    // The revwalk yields the newest snapshot first, so every delta is the
+    // difference against the snapshot that came before it in time.
+    for index in 0..snapshots.len() {
+        let previous_words = snapshots
+            .get(index + 1)
+            .map(|s| s.total_words)
+            .unwrap_or(0);
+        snapshots[index].word_count_delta =
+            (snapshots[index].total_words as i64 - previous_words as i64) as i32;
     }
 
     Ok(snapshots)
@@ -496,8 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn create_snapshot_never_commits_into_a_parent_repository() {
-        let outer = tempfile::tempdir().unwrap();
+    fn create_snapshot_never_commits_into_a_parent_repository() {        let outer = tempfile::tempdir().unwrap();
         let repo = Repository::init(outer.path()).unwrap();
         fs::create_dir_all(outer.path().join("manuscript")).unwrap();
         fs::write(outer.path().join("manuscript/ch-01.md"), "alpha beta\n").unwrap();
@@ -521,5 +525,38 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.kind, "NOT_A_REPO");
+    }
+
+    #[test]
+    fn list_snapshots_reports_the_delta_introduced_by_each_snapshot() {
+        let dir = setup_repo();
+        let root = dir.path().to_string_lossy().to_string();
+
+        fs::write(
+            dir.path().join("manuscript/ch-01.md"),
+            "alpha beta gamma\n",
+        )
+        .unwrap();
+        create_snapshot(root.clone(), None, "rev one".to_string()).unwrap();
+
+        fs::write(
+            dir.path().join("manuscript/ch-01.md"),
+            "alpha beta gamma delta epsilon zeta\n",
+        )
+        .unwrap();
+        create_snapshot(root.clone(), None, "rev two".to_string()).unwrap();
+
+        let list = list_snapshots(root).unwrap();
+        assert_eq!(list.len(), 2);
+
+        // The newest snapshot added three words.
+        assert_eq!(list[0].label, "rev two");
+        assert_eq!(list[0].total_words, 6);
+        assert_eq!(list[0].word_count_delta, 3);
+
+        // The oldest one is compared against zero.
+        assert_eq!(list[1].label, "rev one");
+        assert_eq!(list[1].total_words, 3);
+        assert_eq!(list[1].word_count_delta, 3);
     }
 }

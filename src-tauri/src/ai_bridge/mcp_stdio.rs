@@ -303,8 +303,14 @@ fn load_character_specs(root: &Path) -> Vec<LoreCharacterSpec> {
             .get("title")
             .or_else(|| fm.get("name"))
             .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+            .map(|s| s.to_string())
+            .or_else(|| parsed.headings.first().cloned())
+            .unwrap_or_else(|| {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string()
+            });
         if name.is_empty() {
             continue;
         }
@@ -366,8 +372,12 @@ fn tool_check_continuity(root: &Path, args: &Value) -> Value {
     let is_flashback = record.map(|r| r.is_flashback).unwrap_or(false);
     let chapter_date = record.map(|r| r.story_date.clone()).unwrap_or_else(|| "unknown".to_string());
 
-    let paragraphs: Vec<String> = draft_text
-        .replace("\r\n", "\n")
+    // The draft may be a whole `.md` file: the YAML frontmatter is metadata,
+    // not prose, so it must not become the first paragraph.
+    let normalized_draft = draft_text.replace("\r\n", "\n");
+    let parsed_draft = parse_markdown_with_frontmatter(&normalized_draft);
+    let draft_body = crate::core_engine::parser::blocks_to_markdown(&parsed_draft.blocks);
+    let paragraphs: Vec<String> = draft_body
         .split("\n\n")
         .map(|p| p.trim().trim_start_matches('#').trim().to_string())
         .filter(|p| !p.is_empty())
@@ -527,8 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn check_continuity_splits_crlf_drafts_into_paragraphs() {
-        let dir = tempfile::tempdir().unwrap();
+    fn check_continuity_splits_crlf_drafts_into_paragraphs() {        let dir = tempfile::tempdir().unwrap();
         let chars = dir.path().join("lorebook").join("characters");
         std::fs::create_dir_all(&chars).unwrap();
         std::fs::write(
@@ -552,6 +561,69 @@ mod tests {
             diagnostics.iter().any(|d| d.get("rule_id").and_then(|r| r.as_str())
                 == Some("DEAD_CHARACTER")),
             "a CRLF draft must be split into paragraphs before linting"
+        );
+    }
+
+    #[test]
+    fn check_continuity_ignores_the_yaml_frontmatter_of_a_raw_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let chars = dir.path().join("lorebook").join("characters");
+        std::fs::create_dir_all(&chars).unwrap();
+        std::fs::write(
+            chars.join("khanh.md"),
+            "---\nid: char_khanh\ntype: character\ntitle: Chỉ huy Khánh\nstatus: dead\ndeath_chapter_order: 0\n---\n\nHồ sơ.",
+        )
+        .unwrap();
+
+        let args = json!({
+            "draft_text": "---\nid: ch_02\ntitle: Mở đầu\n---\n\nChỉ huy Khánh bước ra.",
+            "chapter_id": "ch_02"
+        });
+        let result = tool_check_continuity(dir.path(), &args);
+        let diagnostics = result
+            .get("diagnostics")
+            .and_then(|d| d.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let dead = diagnostics.iter().find(|d| {
+            d.get("rule_id").and_then(|r| r.as_str()) == Some("DEAD_CHARACTER")
+        });
+        assert!(dead.is_some(), "the dead character must still be detected");
+        assert_eq!(
+            dead.and_then(|d| d.get("paragraph_index")).and_then(|p| p.as_i64()),
+            Some(0),
+            "the YAML frontmatter must not be counted as a paragraph"
+        );
+    }
+
+    #[test]
+    fn character_specs_fall_back_to_the_heading_or_the_file_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let chars = dir.path().join("lorebook").join("characters");
+        std::fs::create_dir_all(&chars).unwrap();
+        // Only a heading carries the name.
+        std::fs::write(
+            chars.join("khanh.md"),
+            "---\nid: char_khanh\nstatus: dead\ndeath_chapter_order: 0\n---\n\n# Chỉ huy Khánh\n\nHồ sơ.",
+        )
+        .unwrap();
+        // Neither a title nor a heading — the file name is used.
+        std::fs::write(
+            chars.join("tram.md"),
+            "---\nid: char_tram\nstatus: dead\ndeath_chapter_order: 0\n---\n\nHồ sơ.",
+        )
+        .unwrap();
+
+        let specs = load_character_specs(dir.path());
+        assert_eq!(specs.len(), 2, "both characters must be loaded");
+        assert!(
+            specs.iter().any(|s| s.name == "Chỉ huy Khánh"),
+            "the heading must be used as the name: {specs:?}"
+        );
+        assert!(
+            specs.iter().any(|s| s.name == "tram"),
+            "the file name must be used as the name: {specs:?}"
         );
     }
 }
