@@ -23,6 +23,7 @@ import {
   countVietnameseAndLatinWords,
   runContinuityLinterEngine,
   type ChapterDocument,
+  type ContinuityIssue,
 } from '@/lib/tauri-bridge';
 
 export const Sidebar: React.FC = () => {
@@ -39,6 +40,7 @@ export const Sidebar: React.FC = () => {
     createWhatIfBranch,
     createGitSnapshot,
     restoreSnapshot,
+    updateChapterParagraphs,
   } = useWorkspaceStore();
 
   const {
@@ -83,9 +85,25 @@ export const Sidebar: React.FC = () => {
     [chapters, entities, ignoredIssueIds]
   );
 
+  // Applies a continuity quick fix to the offending paragraph of its chapter.
+  const applyParagraphFix = (
+    issue: ContinuityIssue,
+    transform: (text: string) => string
+  ) => {
+    const chapter = chapters.find((c) => c.id === issue.chapter_id);
+    if (!chapter) return;
+    const paragraphs = [...chapter.paragraphs];
+    const current = paragraphs[issue.paragraph_index];
+    if (current === undefined) return;
+    const next = transform(current);
+    if (next === current) return;
+    paragraphs[issue.paragraph_index] = next;
+    updateChapterParagraphs(chapter.id, paragraphs);
+    ignoreIssue(issue.id);
+  };
+
   // Group chapters by their act so the explorer follows the project structure
-  const actGroups = useMemo(() => {
-    const groups = new Map<string, { title: string; chapters: ChapterDocument[] }>();
+  const actGroups = useMemo(() => {    const groups = new Map<string, { title: string; chapters: ChapterDocument[] }>();
     for (const ch of chapters) {
       const actId = ch.act_id || 'act_01';
       const group = groups.get(actId);
@@ -596,15 +614,7 @@ export const Sidebar: React.FC = () => {
                   </div>
                   <div className="pt-1.5 border-t border-border/60 flex justify-end">
                     <button
-                      onClick={() => {
-                        if (
-                          confirm(
-                            `Bạn có chắc chắn muốn khôi phục toàn bộ bản thảo về điểm nhớ "${snap.label}"?`
-                          )
-                        ) {
-                          restoreSnapshot(snap.id);
-                        }
-                      }}
+                      onClick={() => restoreSnapshot(snap.id)}
                       className="px-2.5 py-1 rounded-lg border semantic-success-box text-[11px] font-semibold transition-opacity hover:opacity-90 flex items-center gap-1"
                     >
                       <RotateCcw size={11} /> Khôi phục mốc này
@@ -715,6 +725,20 @@ export const Sidebar: React.FC = () => {
                               .updateEntity(issue.entity_id, {
                                 status: 'alive',
                               });
+                          } else if (qf.action === 'mark_flashback') {
+                            applyParagraphFix(issue, (text) =>
+                              text.toLowerCase().startsWith('[hồi tưởng]')
+                                ? text
+                                : `[Hồi tưởng] ${text}`
+                            );
+                          } else if (
+                            qf.action === 'replace_synonym' &&
+                            qf.replacement
+                          ) {
+                            const replacement = qf.replacement;
+                            applyParagraphFix(issue, (text) =>
+                              text.replace(issue.matched_text, replacement)
+                            );
                           }
                         }}
                         className="text-left text-xs font-semibold text-primary hover:underline bg-canvas/80 px-2 py-1 rounded border border-border/70"
