@@ -141,17 +141,17 @@ interface AgentStoreState {
 export const useAgentStore = create<AgentStoreState>((set) => ({
   activeRightTab: 'composer',
   selectedModel: 'Claude 3.7 Sonnet (MCP Bridge)',
-  pinnedContextIds: DEMO_PINNED_CONTEXT_IDS,
+  pinnedContextIds: [],
   apiKey: '',
   ollamaEndpoint: 'http://localhost:11434',
   agentWritingLock: false,
   agentLockTarget: null,
 
-  diffProposals: DEMO_DIFF_PROPOSALS,
+  diffProposals: [],
 
-  composerMessages: DEMO_COMPOSER_MESSAGES,
+  composerMessages: [],
 
-  mcpLogs: DEMO_MCP_LOGS,
+  mcpLogs: [],
 
   setActiveRightTab: (tab) => set({ activeRightTab: tab }),
   setSelectedModel: (model) => set({ selectedModel: model }),

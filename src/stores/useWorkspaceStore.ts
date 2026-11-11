@@ -157,21 +157,26 @@ export interface PersistedWorkspaceState {
 export function workspacePartialize(
   state: WorkspaceState
 ): PersistedWorkspaceState {
-  const isDemo = state.isDemoData;
+  // Never persist demo workspace chapters/entities in Tauri desktop app so
+  // installing or launching the desktop app always starts clean unless a real
+  // disk project (rootPath) was opened.
+  const keepDemoInBrowser = state.isDemoData && !isTauri();
   return {
-    projectName: state.projectName,
+    projectName: state.isDemoData && isTauri() ? '' : state.projectName,
     theme: state.theme,
-    chapters: isDemo ? state.chapters : [],
-    entities: isDemo ? state.entities : [],
-    relations: isDemo ? state.relations : [],
-    snapshots: isDemo ? state.snapshots : [],
+    chapters: keepDemoInBrowser ? state.chapters : [],
+    entities: keepDemoInBrowser ? state.entities : [],
+    relations: keepDemoInBrowser ? state.relations : [],
+    snapshots: keepDemoInBrowser ? state.snapshots : [],
     activeBranch: state.activeBranch,
     availableBranches: state.availableBranches,
-    isDemoData: state.isDemoData,
-    rootPath: state.rootPath,
-    openTabs: state.openTabs,
-    activePrimaryTabId: state.activePrimaryTabId,
-    activeSecondaryTabId: state.activeSecondaryTabId,
+    isDemoData: keepDemoInBrowser ? state.isDemoData : false,
+    rootPath: state.isDemoData ? null : state.rootPath,
+    openTabs: state.isDemoData && isTauri() ? [] : state.openTabs,
+    activePrimaryTabId:
+      state.isDemoData && isTauri() ? '' : state.activePrimaryTabId,
+    activeSecondaryTabId:
+      state.isDemoData && isTauri() ? null : state.activeSecondaryTabId,
   };
 }
 
@@ -1474,6 +1479,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       closeProject: async () => {
         await get().flushAllSaves();
+        useAgentStore.getState().clearDemoArtifacts();
         set({
           isProjectLoading: false,
           isDemoData: false,
@@ -1490,14 +1496,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         });
       },
 
-      resetToDefaults: () =>
+      resetToDefaults: () => {
+        useAgentStore.getState().clearDemoArtifacts();
         set({
-          chapters: INITIAL_CHAPTERS,
-          entities: INITIAL_ENTITIES,
-          relations: INITIAL_RELATIONS,
-          snapshots: INITIAL_SNAPSHOTS,
+          isProjectLoading: false,
+          isDemoData: false,
+          projectName: '',
+          chapters: [],
+          entities: [],
+          relations: [],
+          snapshots: [],
+          openTabs: [],
+          activePrimaryTabId: '',
+          activeSecondaryTabId: null,
+          rootPath: null,
           activeBranch: 'main',
-        }),
+          ipcNotice: null,
+        });
+      },
 
       exportProjectJson: () => {
         const state = get();
@@ -1539,9 +1555,30 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     },
     {
       name: 'novelforge-workspace-storage',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       partialize: workspacePartialize,
+      migrate: (persistedState: unknown) => {
+        const state = persistedState as Partial<PersistedWorkspaceState> | undefined;
+        if (!state || state.isDemoData || !state.rootPath) {
+          return {
+            projectName: '',
+            theme: state?.theme ?? 'obsidian',
+            chapters: [],
+            entities: [],
+            relations: [],
+            snapshots: [],
+            activeBranch: 'main',
+            availableBranches: ['main'],
+            isDemoData: false,
+            rootPath: null,
+            openTabs: [],
+            activePrimaryTabId: '',
+            activeSecondaryTabId: null,
+          };
+        }
+        return state as PersistedWorkspaceState;
+      },
     }
   )
 );

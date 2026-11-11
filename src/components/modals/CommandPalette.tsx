@@ -32,6 +32,7 @@ export const CommandPalette: React.FC = () => {
     toggleSplitView,
     toggleZenMode,
     createGitSnapshot,
+    closeProject,
   } = useWorkspaceStore();
 
   const [query, setQuery] = useState('');
@@ -118,6 +119,14 @@ export const CommandPalette: React.FC = () => {
           targetId: 'graph-all',
         }),
     },
+    {
+      id: 'cmd-close-project',
+      label: 'Workspace: Đóng dự án hiện tại / Xóa dữ liệu Demo đang mở',
+      shortcut: '',
+      action: () => {
+        void closeProject();
+      },
+    },
   ].filter((c) => !query || c.label.toLowerCase().includes(query.toLowerCase()));
 
   return (
@@ -202,7 +211,7 @@ export const CommandPalette: React.FC = () => {
                   className="flex items-center justify-between p-2 rounded-lg hover:bg-elevated cursor-pointer text-primary transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <FileText size={14} className="text-amber-500" />
+                    <FileText size={14} className="semantic-warning-text" />
                     <span className="font-medium">{ch.title}</span>
                   </div>
                   <span className="text-[10px] text-muted">
@@ -234,7 +243,7 @@ export const CommandPalette: React.FC = () => {
                   className="flex items-center justify-between p-2 rounded-lg hover:bg-elevated cursor-pointer text-primary transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <User size={14} className="text-emerald-500" />
+                    <User size={14} className="semantic-success-text" />
                     <span className="font-medium">{ent.title}</span>
                     {ent.aliases.length > 0 && (
                       <span className="text-[10px] text-muted">

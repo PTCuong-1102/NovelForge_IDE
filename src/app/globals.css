@@ -12,6 +12,7 @@
 /* 1. Obsidian Ink (Dark Mode - Default for Architect Mode) */
 :root,
 [data-theme="obsidian"] {
+  color-scheme: dark;
   --bg-canvas: #0B0D11;
   --bg-panel: #12151C;
   --bg-elevated: #1A1E28;
@@ -21,6 +22,7 @@
   --text-muted: #94A3B8;
   --accent-color: #10B981;
   --shadow-paper: 0 20px 45px -15px rgba(0, 0, 0, 0.65), 0 0 1px 1px rgba(255, 255, 255, 0.04);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   /* Adaptive Semantic Tokens (High Contrast on Dark) */
   --entity-pill-bg: rgba(16, 185, 129, 0.16);
@@ -50,6 +52,7 @@
 
 /* 2. Warm Parchment (Sepia Mode - Eye-care for long writing sessions) */
 [data-theme="parchment"] {
+  color-scheme: light;
   --bg-canvas: #EFE9DC;
   --bg-panel: #E6DEC8;
   --bg-elevated: #DCD2BA;
@@ -59,6 +62,7 @@
   --text-muted: #574C41;
   --accent-color: #0F766E;
   --shadow-paper: 0 14px 34px -10px rgba(68, 52, 34, 0.14), 0 1px 3px rgba(68, 52, 34, 0.08);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23574C41' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   /* Adaptive Semantic Tokens (Deep Ink Contrast on Warm Sepia) */
   --entity-pill-bg: rgba(15, 118, 110, 0.14);
@@ -88,6 +92,7 @@
 
 /* 3. Daylight Paper (Clean Light Mode - Notion / Editorial style) */
 [data-theme="daylight"] {
+  color-scheme: light;
   --bg-canvas: #F1F5F9;
   --bg-panel: #F8FAFC;
   --bg-elevated: #E2E8F0;
@@ -97,6 +102,7 @@
   --text-muted: #475569;
   --accent-color: #059669;
   --shadow-paper: 0 14px 36px -12px rgba(15, 23, 42, 0.1), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   /* Adaptive Semantic Tokens (High Contrast on Daylight White) */
   --entity-pill-bg: rgba(5, 150, 105, 0.12);
@@ -132,10 +138,33 @@ body {
   user-select: none;
 }
 
-/* Native Select & Option Contrast Guard across all OS/Browsers */
-select,
+/* Native Select, Option & Form Control Contrast Guard across all OS/Browsers (WebKitGTK/Chromium) */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.4rem center;
+  background-size: 12px 12px;
+  padding-right: 1.4rem !important;
+}
+
 option {
   background-color: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea {
+  color: var(--text-primary);
+  caret-color: var(--accent-color);
+}
+
+::selection {
+  background-color: rgba(16, 185, 129, 0.25);
   color: var(--text-primary);
 }
 

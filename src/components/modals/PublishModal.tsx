@@ -266,7 +266,7 @@ export const PublishModal: React.FC = () => {
           </div>
 
           {exportError && (
-            <div className="p-2.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 text-xs flex items-center gap-2 font-medium">
+            <div className="p-2.5 rounded-lg border semantic-error-box text-xs flex items-center gap-2 font-medium">
               <AlertCircle size={14} className="shrink-0" />
               <span>{exportError}</span>
             </div>

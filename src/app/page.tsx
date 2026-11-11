@@ -44,6 +44,7 @@ export default function WorkbenchPage() {
     ipcNotice,
     loadDemoProject,
     openProjectFromDialog,
+    closeProject,
     dismissIpcNotice,
     rootPath,
     isDemoData,
@@ -340,6 +341,17 @@ export default function WorkbenchPage() {
             <span className="font-semibold text-primary truncate hidden sm:inline">
               {projectName}
             </span>
+
+            {isDemoData && (
+              <button
+                onClick={() => void closeProject()}
+                className="px-2 py-0.5 rounded-md border semantic-warning-box text-[11px] font-semibold flex items-center gap-1 hover:opacity-90 shrink-0"
+                title="Đóng dữ liệu mẫu (Demo) và quay về màn hình chọn dự án"
+              >
+                <span>Đóng Demo</span>
+                <X size={11} />
+              </button>
+            )}
 
             {currentChapter && (
               <div className="hidden lg:flex items-center gap-1 text-muted truncate">

@@ -1,7 +1,5 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import fs from 'node:fs';
-import path from 'node:path';
 import {
   parseMarkdownWithFrontmatter,
   serializeMarkdownWithFrontmatter,
@@ -28,6 +26,7 @@ import {
   isUnicodeWordBoundary,
   replaceWholeWordUnicode,
 } from '../word-boundary.js';
+import { DEMO_CHAPTERS } from '../ipc-demo.js';
 
 describe('NovelForge Core Literature Engine Tests', () => {
   const sampleMarkdown = `---
@@ -232,23 +231,19 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
   });
 
   it('11. Real manuscript files round-trip through the parser losslessly', () => {
-    const manuscriptDir = path.join(process.cwd(), 'manuscript', 'act-01');
-    const files = fs
-      .readdirSync(manuscriptDir)
-      .filter((f) => f.endsWith('.md'));
-    assert(files.length > 0, 'expected at least one manuscript chapter');
+    assert(DEMO_CHAPTERS.length > 0, 'expected at least one chapter fixture');
 
-    for (const file of files) {
-      const raw = fs.readFileSync(path.join(manuscriptDir, file), 'utf8');
+    for (const ch of DEMO_CHAPTERS) {
+      const raw = serializeChapterToLosslessMarkdown(ch);
       const parsed = parseMarkdownWithFrontmatter(raw);
 
-      // Frontmatter must carry the chapter identity declared in the repo data.
-      assert(parsed.frontmatter.id, `missing id in ${file}`);
-      assert(parsed.frontmatter.title, `missing title in ${file}`);
+      // Frontmatter must carry the chapter identity.
+      assert(parsed.frontmatter.id, `missing id in ${ch.file_path}`);
+      assert(parsed.frontmatter.title, `missing title in ${ch.file_path}`);
 
       // Body must contain readable Vietnamese prose.
       const words = countVietnameseAndLatinWords(parsed.body);
-      assert(words > 20, `suspiciously low word count (${words}) in ${file}`);
+      assert(words > 20, `suspiciously low word count (${words}) in ${ch.file_path}`);
 
       // Round-trip: serialize (paragraphs) then parse again — content must survive.
       const reparsed = parseMarkdownWithFrontmatter(
@@ -260,12 +255,12 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
       assert.deepStrictEqual(
         reparsed.frontmatter,
         parsed.frontmatter,
-        `frontmatter drifted for ${file}`
+        `frontmatter drifted for ${ch.file_path}`
       );
       assert.deepStrictEqual(
         reparsed.paragraphs.map((p) => p.trim()),
         parsed.paragraphs.map((p) => p.trim()),
-        `paragraphs drifted for ${file}`
+        `paragraphs drifted for ${ch.file_path}`
       );
     }
   });

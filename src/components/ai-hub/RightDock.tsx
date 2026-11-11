@@ -408,7 +408,7 @@ export const RightDock: React.FC = () => {
                 <Terminal size={14} className="semantic-info-text" />
                 External Agent Subprocesses
               </span>
-              <span className="text-[11px] px-2 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold">
+              <span className="text-[11px] px-2 py-0.5 rounded-full border semantic-warning-box font-semibold">
                 Chưa kích hoạt
               </span>
             </div>
@@ -472,10 +472,8 @@ export const RightDock: React.FC = () => {
               </span>
             </div>
             <div
-              className={`text-[10px] leading-snug px-2.5 py-1.5 rounded-lg border ${
-                canRunRealMcp
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+              className={`text-[10px] leading-snug px-2.5 py-1.5 rounded-lg border font-medium ${
+                canRunRealMcp ? 'semantic-success-box' : 'semantic-warning-box'
               }`}
               role="status"
             >

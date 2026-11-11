@@ -44,8 +44,8 @@ interface EditorStoreState extends ActiveModalState {
 }
 
 export const useEditorStore = create<EditorStoreState>((set) => ({
-  activeChapterId: 'ch_08',
-  focusedParagraphIndex: 1,
+  activeChapterId: '',
+  focusedParagraphIndex: 0,
   typewriterScrolling: true,
   paragraphFocus: false,
   firstLineIndent: true,
@@ -55,7 +55,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   hoveredEntityId: null,
   hoveredIssueId: null,
   slashMenuOpen: false,
-  slashMenuParagraphIndex: 2,
+  slashMenuParagraphIndex: 0,
 
   commandPaletteOpen: false,
   commandPaletteMode: 'quick-open',

@@ -67,14 +67,14 @@ export const StatusBar: React.FC = () => {
       <div className="flex items-center gap-3">
         {isDemoData ? (
           <span
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 font-semibold"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border semantic-warning-box font-semibold"
             title="Đang chạy ở chế độ Dữ liệu mẫu (Demo) trong trình duyệt"
           >
             ● Demo
           </span>
         ) : (
           <span
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border semantic-success-box font-semibold"
             title={`Thư mục dự án: ${rootPath || 'Cục bộ'}`}
           >
             ● Local

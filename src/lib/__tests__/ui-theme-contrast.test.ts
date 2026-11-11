@@ -15,6 +15,14 @@ describe('UI Theme Contrast & Typography Guard Tests', () => {
     assert(css.includes('--semantic-info-text:'), 'Must define --semantic-info-text');
     assert(css.includes('--entity-pill-text:'), 'Must define --entity-pill-text');
     assert(css.includes('--lore-pill-text:'), 'Must define --lore-pill-text');
+    assert(
+      css.includes('appearance: none') && css.includes('--select-chevron:'),
+      'Must strip native OS/GTK select appearance so custom theme colors and contrast apply across Linux/Windows/macOS'
+    );
+    assert(
+      css.includes('color-scheme: dark') && css.includes('color-scheme: light'),
+      'Must set explicit color-scheme per theme'
+    );
   });
 
   it('2. Loads Vietnamese Google Fonts (Literata, Plus Jakarta Sans, JetBrains Mono) in layout.tsx', () => {
@@ -50,18 +58,25 @@ describe('UI Theme Contrast & Typography Guard Tests', () => {
       'text-red-200',
       'text-red-300',
       'text-amber-200',
+      'text-amber-400',
       'text-emerald-200',
       'text-emerald-300',
+      'text-emerald-400',
       'text-blue-300',
       'bg-emerald-950/20',
       'bg-red-950/20',
+      'dark:text-',
     ];
     const filesToCheck = [
       'src/components/workbench/Sidebar.tsx',
+      'src/components/workbench/StatusBar.tsx',
       'src/components/ai-hub/RightDock.tsx',
       'src/components/editor/NovelEditor.tsx',
+      'src/components/editor/ChapterHeaderProperties.tsx',
       'src/components/lorebook/RelationshipGraph.tsx',
       'src/components/modals/RefactorRenameModal.tsx',
+      'src/components/modals/PublishModal.tsx',
+      'src/components/modals/CommandPalette.tsx',
     ];
     for (const relPath of filesToCheck) {
       const content = fs.readFileSync(path.join(rootDir, relPath), 'utf8');
