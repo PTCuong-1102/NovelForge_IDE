@@ -1,6 +1,6 @@
 {
   "name": "novelforge-ide",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "NovelForge IDE — Specialized Desktop & Web IDE for Novelists, Screenwriters, and Long-form Creators",
   "scripts": {

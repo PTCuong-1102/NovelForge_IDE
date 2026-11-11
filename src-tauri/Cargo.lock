@@ -2057,7 +2057,7 @@ dependencies = [
 
 [[package]]
 name = "novelforge-ide"
-version = "1.0.0"
+version = "0.0.1"
 dependencies = [
  "aho-corasick",
  "chrono",

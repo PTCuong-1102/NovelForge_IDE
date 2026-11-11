@@ -150,7 +150,12 @@ mod tests {
     fn test_rejects_symlinked_parent_for_missing_file() {
         let temp = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
+        #[cfg(unix)]
         std::os::unix::fs::symlink(outside.path(), temp.path().join("link")).unwrap();
+        #[cfg(windows)]
+        if std::os::windows::fs::symlink_dir(outside.path(), temp.path().join("link")).is_err() {
+            return;
+        }
 
         // The file does not exist yet, but its parent is a symlink out of the root.
         let res = canonical_within(temp.path(), Path::new("link/sub/new-file.md"));

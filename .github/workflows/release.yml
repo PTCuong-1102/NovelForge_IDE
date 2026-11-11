@@ -1,0 +1,96 @@
+name: Release Desktop Bundles
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v0.0.1)'
+        required: true
+        default: 'v0.0.1'
+
+permissions:
+  contents: write
+
+jobs:
+  build-tauri:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            name: Linux (x86_64 - DEB, RPM, AppImage)
+          - platform: windows-latest
+            name: Windows (x64 - MSI, NSIS .exe)
+    runs-on: ${{ matrix.platform }}
+    name: Build ${{ matrix.name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux system dependencies (GTK3 + WebKit2GTK)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend & Rust verification
+        run: |
+          npm test
+          npm run typecheck
+          npm run verify:utf8
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build and upload Tauri bundles to GitHub Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: 'NovelForge IDE ${{ inputs.tag || github.ref_name }}'
+          releaseBody: |
+            ## NovelForge IDE ${{ inputs.tag || github.ref_name }} — Initial Release
+
+            **NovelForge IDE** is a local-first, precision desktop IDE purpose-built for novelists, screenwriters, and long-form fiction creators. Combining the focused literary ergonomics of a book page with the structural power of modern software IDEs, NovelForge keeps your entire world-building canon, continuity checks, and version history synchronized directly on disk.
+
+            ### Highlights & Core Capabilities
+            - **Seamless Literary Canvas & Dual-Mode Editing:** Write in an elevated, distraction-free literary paper sheet (`Literata` serif typography with full Vietnamese diacritic support) using in-place paragraph editing, full **TipTap / ProseMirror** continuous mode, or **100% lossless bi-directional Markdown + YAML frontmatter**.
+            - **Real-Time Plot Continuity Linter:** Automatically detects narrative contradictions across your manuscript—including dead character appearances, attribute mismatches against Lorebook profiles, word repetitions, and pacing warnings—complete with `Alt+Enter` Quick Fixes.
+            - **Lorebook World-Building & Interactive Graph:** Manage characters, locations, and artifacts in a Notion-style database and visualize chapter-by-chapter character relationships using an interactive `@xyflow/react` graph.
+            - **Project-Wide Smart Literary Refactor (`Shift+F6`):** Safely rename characters, aliases, or locations across every chapter with whole-word Unicode boundary precision and diff previews.
+            - **Native Git Story Snapshots (`libgit2`):** Create instant story checkpoints (`Ctrl+Shift+S`) and safely restore `manuscript/` and `lorebook/` states without risking workspace configuration.
+            - **Embedded MCP Stdio Server & AI Composer Hub:** Built-in Model Context Protocol (`novelforge-ide mcp <project_root>`) exposing `novel_search_lore` (Hybrid BM25 + vector RAG), `novel_get_chapter_context`, `novel_check_continuity`, and `novel_propose_edit` (non-destructive inline diff proposals).
+            - **Multi-Format E-Book Publishing (`Ctrl+E`):** Compile your manuscript into standards-compliant **EPUB 3**, **DOCX**, or print-ready **PDF** with optional Lorebook glossaries and automatic stripping of private author notes.
+            - **3 High-Contrast Adaptive Themes:** Switch effortlessly between **Obsidian Ink** (Dark), **Warm Parchment** (Eye-care Sepia), and **Daylight Paper** (Editorial Light).
+
+            ### Installation Packages
+            - **Windows (x64):** `.msi` (Windows Installer) & `-setup.exe` (NSIS Installer)
+            - **Linux (x86_64):** `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), and `.AppImage`
+          releaseDraft: false
+          prerelease: false
