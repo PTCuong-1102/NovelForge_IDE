@@ -332,4 +332,106 @@ test('Workspace store disk-save flush behaviour', async (t) => {
       'the entity tab must show the new title'
     );
   });
+
+  await t.test('15. changing a chapter id re-points every reference to it', () => {
+    useWorkspaceStore.setState({
+      chapters: [makeChapter('ch_01', 1, 'manuscript/act-01/ch-01.md')],
+      entities: [],
+      relations: [],
+      openTabs: [
+        {
+          id: 'tab-ch_01',
+          title: 'Chương 1',
+          type: 'chapter',
+          targetId: 'ch_01',
+          pane: 'primary',
+        },
+      ],
+      activePrimaryTabId: 'tab-ch_01',
+      activeSecondaryTabId: null,
+    });
+
+    useWorkspaceStore
+      .getState()
+      .updateChapterMetadata('ch_01', { id: 'ch_77' });
+
+    const state = useWorkspaceStore.getState();
+    assert.strictEqual(state.chapters[0].id, 'ch_77', 'the chapter id changes');
+    const tab = state.openTabs.find((t) => t.targetId === 'ch_77');
+    assert.ok(tab, 'the tab must follow the new id');
+    assert.strictEqual(tab?.id, 'tab-ch_77', 'the tab id must follow too');
+    assert.strictEqual(
+      state.activePrimaryTabId,
+      'tab-ch_77',
+      'the active tab must follow the new id'
+    );
+  });
+
+  await t.test('16. changing an entity id re-points every reference to it', () => {
+    useWorkspaceStore.setState({
+      chapters: [
+        {
+          ...makeChapter('ch_01', 1, 'manuscript/act-01/ch-01.md'),
+          pov_character_id: 'char_01',
+        },
+      ],
+      entities: [
+        {
+          id: 'char_01',
+          entity_type: 'character',
+          title: 'Linh',
+          aliases: [],
+          file_path: 'lorebook/characters/linh.md',
+          status: 'alive',
+          tags: [],
+          summary: '',
+          body: '',
+          updated_at: '',
+        },
+      ],
+      relations: [
+        {
+          id: 'rel_1',
+          source_id: 'char_01',
+          target_id: 'char_02',
+          label: 'đồng đội',
+          relation_type: 'ally',
+          min_chapter: 1,
+          max_chapter: 5,
+        },
+      ],
+      openTabs: [
+        {
+          id: 'tab-char_01',
+          title: 'Linh',
+          type: 'lore-entity',
+          targetId: 'char_01',
+          pane: 'secondary',
+        },
+      ],
+      activePrimaryTabId: '',
+      activeSecondaryTabId: 'tab-char_01',
+    });
+
+    useWorkspaceStore.getState().updateEntity('char_01', { id: 'char_99' });
+
+    const state = useWorkspaceStore.getState();
+    assert.strictEqual(state.entities[0].id, 'char_99');
+    assert.strictEqual(
+      state.relations[0].source_id,
+      'char_99',
+      'the relation must follow the new id'
+    );
+    assert.strictEqual(
+      state.chapters[0].pov_character_id,
+      'char_99',
+      'the chapter POV must follow the new id'
+    );
+    assert.strictEqual(
+      state.openTabs[0].targetId,
+      'char_99',
+      'the entity tab must follow the new id'
+    );
+    assert.strictEqual(state.activeSecondaryTabId, 'tab-char_99');
+  });
 });

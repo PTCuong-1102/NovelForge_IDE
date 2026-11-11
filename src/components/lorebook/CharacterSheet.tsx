@@ -30,6 +30,22 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
   const [appearance, setAppearance] = useState(entity.appearance || '');
   const [personality, setPersonality] = useState(entity.personality || '');
   const [body, setBody] = useState(entity.body || '');
+  const [idDraft, setIdDraft] = useState(entity.id);
+
+  useEffect(() => {
+    setIdDraft(entity.id);
+  }, [entity.id]);
+
+  // Changing the technical id re-points every reference to this entity.
+  const applyIdChange = () => {
+    const next = idDraft.trim();
+    if (!next || next === entity.id) return;
+    const confirmed = window.confirm(
+      `Đổi ID thực thể từ "${entity.id}" sang "${next}"?\n\nTab đang mở, quan hệ nhân vật và chỉ mục SQLite sẽ được cập nhật theo.`
+    );
+    if (!confirmed) return;
+    updateEntity(entity.id, { id: next });
+  };
 
   // Re-sync the form when the entity is replaced or renamed from the outside
   // (tab switch, Refactor Rename) — a stale form would overwrite the new values.
@@ -154,6 +170,30 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
               className="bg-elevated border border-border rounded-lg px-2.5 py-2 text-primary font-medium focus:outline-none focus:border-accent"
               placeholder="VD: Tiểu Linh, Đặc vụ số 7"
             />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-muted">
+              ID kỹ thuật (dùng cho tab, quan hệ và chỉ mục SQLite):
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={idDraft}
+                onChange={(e) => setIdDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyIdChange();
+                }}
+                className="flex-1 bg-elevated border border-border rounded-lg px-2.5 py-2 text-primary font-mono focus:outline-none focus:border-accent"
+              />
+              <button
+                onClick={applyIdChange}
+                disabled={!idDraft.trim() || idDraft.trim() === entity.id}
+                className="px-2.5 py-2 rounded-lg border border-border bg-elevated text-[11px] font-semibold text-primary disabled:opacity-40"
+              >
+                Đổi ID
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">

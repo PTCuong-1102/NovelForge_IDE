@@ -238,6 +238,50 @@ const canWriteToDisk = (s: WorkspaceState): boolean =>
 const askConfirm = (message: string): boolean =>
   typeof window === 'undefined' ? true : window.confirm(message);
 
+/**
+ * Re-points the tabs (and the active tab selection) from `oldId` to `newId`.
+ * Used when a chapter or an entity changes its technical id.
+ */
+const renameTabReferences = (
+  state: WorkspaceState,
+  oldId: string,
+  newId: string
+): Pick<
+  WorkspaceState,
+  'openTabs' | 'activePrimaryTabId' | 'activeSecondaryTabId'
+> => {
+  const remapTabId = (tabId: string) =>
+    tabId === `tab-${oldId}` ? `tab-${newId}` : tabId;
+
+  return {
+    openTabs: state.openTabs.map((t) =>
+      t.targetId === oldId
+        ? {
+            ...t,
+            id: t.id === `tab-${oldId}` ? `tab-${newId}` : t.id,
+            targetId: newId,
+          }
+        : t
+    ),
+    activePrimaryTabId: remapTabId(state.activePrimaryTabId),
+    activeSecondaryTabId: state.activeSecondaryTabId
+      ? remapTabId(state.activeSecondaryTabId)
+      : null,
+  };
+};
+
+/** Drops a pending debounced save so it cannot write with a stale id. */
+const cancelPendingSave = (
+  map: Map<string, ReturnType<typeof setTimeout>>,
+  id: string
+) => {
+  const pending = map.get(id);
+  if (pending) {
+    clearTimeout(pending);
+    map.delete(id);
+  }
+};
+
 // --- SQLite index sync (debounced; only for real desktop projects) ---
 let sqliteSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -465,37 +509,105 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
 
       updateChapterMetadata: (chapterId, patch) => {
-        set((state) => ({
-          saveStatus: canWriteToDisk(state) ? 'saving' : 'saved',
-          chapters: state.chapters.map((ch) =>
+        const newId =
+          typeof patch.id === 'string' && patch.id.trim()
+            ? patch.id.trim()
+            : chapterId;
+        const renamed = newId !== chapterId;
+
+        set((state) => {
+          const chapters = state.chapters.map((ch) =>
             ch.id === chapterId
-              ? { ...ch, ...patch, updated_at: new Date().toISOString() }
+              ? {
+                  ...ch,
+                  ...patch,
+                  id: newId,
+                  updated_at: new Date().toISOString(),
+                }
               : ch
-          ),
-          // The open tab must follow the new title.
-          openTabs: patch.title
-            ? state.openTabs.map((t) =>
-                t.targetId === chapterId ? { ...t, title: patch.title! } : t
-              )
-            : state.openTabs,
-        }));
-        persistChapter(chapterId);
+          );
+
+          if (renamed) {
+            return {
+              saveStatus: canWriteToDisk(state) ? 'saving' : 'saved',
+              chapters,
+              ...renameTabReferences(state, chapterId, newId),
+            };
+          }
+
+          return {
+            saveStatus: canWriteToDisk(state) ? 'saving' : 'saved',
+            chapters,
+            // The open tab must follow the new title.
+            openTabs: patch.title
+              ? state.openTabs.map((t) =>
+                  t.targetId === chapterId ? { ...t, title: patch.title! } : t
+                )
+              : state.openTabs,
+          };
+        });
+
+        if (renamed) {
+          // A pending save would still carry the old id.
+          cancelPendingSave(chapterSaveTimers, chapterId);
+          useAgentStore.getState().remapChapterId(chapterId, newId);
+        }
+        persistChapter(newId);
       },
 
       updateEntity: (entityId, patch) => {
-        set((state) => ({
-          entities: state.entities.map((e) =>
+        const newId =
+          typeof patch.id === 'string' && patch.id.trim()
+            ? patch.id.trim()
+            : entityId;
+        const renamed = newId !== entityId;
+
+        set((state) => {
+          const entities = state.entities.map((e) =>
             e.id === entityId
-              ? { ...e, ...patch, updated_at: new Date().toISOString() }
+              ? {
+                  ...e,
+                  ...patch,
+                  id: newId,
+                  updated_at: new Date().toISOString(),
+                }
               : e
-          ),
-          openTabs: patch.title
-            ? state.openTabs.map((t) =>
-                t.targetId === entityId ? { ...t, title: patch.title! } : t
-              )
-            : state.openTabs,
-        }));
-        persistEntity(entityId);
+          );
+
+          if (renamed) {
+            return {
+              entities,
+              // Every reference to the entity follows the new id.
+              relations: state.relations.map((r) => ({
+                ...r,
+                source_id: r.source_id === entityId ? newId : r.source_id,
+                target_id: r.target_id === entityId ? newId : r.target_id,
+              })),
+              chapters: state.chapters.map((ch) => ({
+                ...ch,
+                pov_character_id:
+                  ch.pov_character_id === entityId ? newId : ch.pov_character_id,
+                location_id:
+                  ch.location_id === entityId ? newId : ch.location_id,
+              })),
+              ...renameTabReferences(state, entityId, newId),
+            };
+          }
+
+          return {
+            entities,
+            openTabs: patch.title
+              ? state.openTabs.map((t) =>
+                  t.targetId === entityId ? { ...t, title: patch.title! } : t
+                )
+              : state.openTabs,
+          };
+        });
+
+        if (renamed) {
+          cancelPendingSave(entitySaveTimers, entityId);
+        }
+        persistEntity(newId);
       },
 
       createEntity: (entity) => {

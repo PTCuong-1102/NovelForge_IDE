@@ -105,4 +105,30 @@ describe('Workspace consistency guard tests', () => {
       'Esc must reject the pending diff'
     );
   });
+
+  it('6. The chapter and entity sheets expose a dedicated id change', () => {
+    const header = read(
+      'src/components/editor/ChapterHeaderProperties.tsx'
+    );
+    assert(
+      header.includes('updateChapterMetadata(chapter.id, { id: next })'),
+      'the chapter id must be changeable'
+    );
+    assert(header.includes('Đổi ID'), 'the chapter id field must be visible');
+
+    const sheet = read('src/components/lorebook/CharacterSheet.tsx');
+    assert(
+      sheet.includes('updateEntity(entity.id, { id: next })'),
+      'the entity id must be changeable'
+    );
+    assert(sheet.includes('Đổi ID'), 'the entity id field must be visible');
+  });
+
+  it('7. The raw Markdown view never rewrites the chapter id', () => {
+    const editor = read('src/components/editor/NovelEditor.tsx');
+    assert(
+      !editor.includes('metadataPatch.id ='),
+      'the id changes through the dedicated field, not through the raw view'
+    );
+  });
 });

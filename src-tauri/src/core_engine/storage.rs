@@ -624,6 +624,32 @@ mod tests {
             "mentions of the previous id must be removed"
         );
 
+        // The new id must own the rows now.
+        let new_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM entities WHERE id = 'char_v2' AND file_path = 'lorebook/characters/linh.md'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(new_rows, 1, "the entity row must carry the new id");
+        let new_chunk: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM lore_embeddings_store WHERE entity_id = 'char_v2' AND chunk_id = 'chunk_char_v2'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(new_chunk, 1, "the embedding chunk must carry the new id");
+        let new_mentions: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM entity_mentions WHERE target_entity_id = 'char_v2'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(new_mentions, 1, "the mentions must carry the new id");
+
         // The chapter disappears from disk.
         fs::remove_file(man.join("ch-01.md")).unwrap();
         sync_workspace_to_sqlite(root).unwrap();

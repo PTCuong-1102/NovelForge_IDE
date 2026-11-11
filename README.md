@@ -274,14 +274,14 @@ NovelForge IDE is designed for lightning-fast keyboard-driven navigation, mirror
 ## 🧪 Testing & Verification
 
 ```bash
-npm test                # frontend: parser, linter, publishers (89 tests)
+npm test                # frontend: parser, linter, publishers (93 tests)
 npm run typecheck       # tsc --noEmit
 npm run verify:utf8     # kiểm tra toàn bộ source là UTF-8 hợp lệ
 cd src-tauri && cargo test   # Rust: parser, linter, paths, git snapshots, sync→RAG (36 tests)
 ```
 
 ### Verified (2026-11-11)
-* `npm test` — **89/89 pass** (gồm round-trip CRLF-safe của `manuscript/*.md` thật).
+* `npm test` — **93/93 pass** (gồm round-trip CRLF-safe của `manuscript/*.md` thật).
 * `npm run build` — static export tới `out/` thành công; `npm run typecheck` — exit 0.
 * `cargo test` — **36/36 pass**, gồm: path-traversal bị chặn, git snapshot create/list/restore
   (restore chỉ ghi đè `manuscript/` & `lorebook/`), và pipeline

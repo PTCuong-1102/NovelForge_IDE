@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Calendar,
   Compass,
@@ -25,6 +25,22 @@ export const ChapterHeaderProperties: React.FC<ChapterHeaderProps> = ({
 }) => {
   const { updateChapterMetadata } = useWorkspaceStore();
   const [expanded, setExpanded] = useState(false);
+  const [idDraft, setIdDraft] = useState(chapter.id);
+
+  useEffect(() => {
+    setIdDraft(chapter.id);
+  }, [chapter.id]);
+
+  // Changing the technical id re-points every reference to this chapter.
+  const applyIdChange = () => {
+    const next = idDraft.trim();
+    if (!next || next === chapter.id) return;
+    const confirmed = window.confirm(
+      `Đổi ID chương từ "${chapter.id}" sang "${next}"?\n\nTab đang mở, đề xuất chỉnh sửa và chỉ mục SQLite sẽ được cập nhật theo.`
+    );
+    if (!confirmed) return;
+    updateChapterMetadata(chapter.id, { id: next });
+  };
 
   const characters = entities.filter((e) => e.entity_type === 'character');
   const locations = entities.filter((e) => e.entity_type === 'location');
@@ -207,6 +223,30 @@ export const ChapterHeaderProperties: React.FC<ChapterHeaderProps> = ({
               value={chapter.file_path}
               className="bg-canvas/60 border border-border rounded-lg px-2.5 py-1.5 text-muted font-mono"
             />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-muted">
+              ID kỹ thuật của chương (dùng cho tab, đề xuất, SQLite):
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={idDraft}
+                onChange={(e) => setIdDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyIdChange();
+                }}
+                className="flex-1 bg-canvas border border-border rounded-lg px-2.5 py-1.5 text-primary font-mono focus:outline-none focus:border-accent"
+              />
+              <button
+                onClick={applyIdChange}
+                disabled={!idDraft.trim() || idDraft.trim() === chapter.id}
+                className="px-2.5 py-1.5 rounded-lg border border-border bg-canvas text-[11px] font-semibold text-primary disabled:opacity-40"
+              >
+                Đổi ID
+              </button>
+            </div>
           </div>
 
           <div className="flex items-end pb-1">

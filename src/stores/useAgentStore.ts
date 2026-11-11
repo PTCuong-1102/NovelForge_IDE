@@ -112,6 +112,8 @@ interface AgentStoreState {
   setOllamaEndpoint: (endpoint: string) => void;
   togglePinnedContext: (id: string) => void;
   clearMessages: () => void;
+  /** Re-points the diff proposals of a chapter that changed its id. */
+  remapChapterId: (oldId: string, newId: string) => void;
   /** Restores the sample workspace artefacts (demo mode only). */
   loadDemoArtifacts: () => void;
   /** Drops every sample artefact — a real project must not show demo activity. */
@@ -164,6 +166,14 @@ export const useAgentStore = create<AgentStoreState>((set) => ({
     })),
 
   clearMessages: () => set({ composerMessages: [] }),
+
+  /** Re-points the diff proposals of a chapter that changed its id. */
+  remapChapterId: (oldId: string, newId: string) =>
+    set((state) => ({
+      diffProposals: state.diffProposals.map((d) =>
+        d.chapter_id === oldId ? { ...d, chapter_id: newId } : d
+      ),
+    })),
 
   /** Restores the sample workspace artefacts (demo mode only). */
   loadDemoArtifacts: () =>
