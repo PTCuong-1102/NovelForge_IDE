@@ -6,6 +6,7 @@ import {
   parsedToEntity,
   entityToFrontmatter,
 } from '../project-io';
+import { stripAuthorNotes } from '../publish/escape-html';
 
 describe('Project IO Lossless Round-trip Tests', () => {
   it('1. preserves markdown headings, scene breaks, and custom frontmatter keys on chapter round-trip', () => {
@@ -109,5 +110,31 @@ describe('Project IO Lossless Round-trip Tests', () => {
       '## Cảnh 2',
       'Đoạn hai.',
     ]);
+  });
+
+  it('6. keeps the author note marker byte-identical so it stays strippable', () => {
+    const rawDoc = {
+      frontmatter: { id: 'ch_01', title: 'Mở đầu' },
+      frontmatter_keys_order: ['id', 'title'],
+      body: '> [!GHI_CHÚ_TÁC_GIẢ] Kiểm tra lại chi tiết ổ khóa.',
+      blocks: [
+        {
+          kind: 'author_note' as const,
+          text: 'Kiểm tra lại chi tiết ổ khóa.',
+        },
+      ],
+    };
+
+    const ch = parsedToChapter('manuscript/act-01/ch-01.md', rawDoc);
+    assert.deepEqual(ch.paragraphs, [
+      '> [!GHI_CHÚ_TÁC_GIẢ] Kiểm tra lại chi tiết ổ khóa.',
+    ]);
+
+    // The publisher must still recognise and drop the note.
+    const published = stripAuthorNotes(ch.paragraphs.join('\n\n'));
+    assert.ok(
+      !published.includes('Kiểm tra lại chi tiết ổ khóa'),
+      `author note leaked into the export: ${published}`
+    );
   });
 });

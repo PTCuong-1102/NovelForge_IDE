@@ -1,4 +1,5 @@
 import type { ChapterDocument, LoreEntity, EntityType } from './tauri-bridge';
+import { CHAPTER_FRONTMATTER_KEYS } from './tauri-bridge';
 import { isTauri, invokeSafe } from './ipc';
 
 export interface FileTreeNode {
@@ -38,24 +39,6 @@ const bool = (v: unknown, fallback = false): boolean =>
   typeof v === 'boolean' ? v : v == null ? fallback : v === 'true';
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.map((x) => str(x)).filter(Boolean) : typeof v === 'string' ? [v] : [];
-
-/** YAML frontmatter keys owned by the chapter schema; anything else is preserved verbatim. */
-const CHAPTER_FRONTMATTER_KEYS = new Set([
-  'id',
-  'act_id',
-  'act_title',
-  'order',
-  'title',
-  'status',
-  'pov_character_id',
-  'pov_character_name',
-  'story_date',
-  'story_year',
-  'location_id',
-  'location_tag',
-  'target_words',
-  'is_flashback',
-]);
 
 /** YAML frontmatter keys owned by the entity schema; anything else is preserved verbatim. */
 const ENTITY_FRONTMATTER_KEYS = new Set([
@@ -116,7 +99,7 @@ function blockToMarkdown(block: ParsedBlock): string {
     case 'scene_break':
       return '***';
     case 'author_note':
-      return `> [!GHI_CHÚ_TÁC GIẢ] ${text}`;
+      return `> [!GHI_CHÚ_TÁC_GIẢ] ${text}`;
     case 'block_quote':
       return `> ${text}`;
     default:
