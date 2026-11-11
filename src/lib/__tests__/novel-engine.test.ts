@@ -24,6 +24,7 @@ import {
 import { buildContextualGhostSuggestion } from '../../components/editor/extensions/ghost-text.js';
 import {
   containsWholeWordUnicode,
+  findWholeWordOccurrences,
   isUnicodeWordBoundary,
   replaceWholeWordUnicode,
 } from '../word-boundary.js';
@@ -345,5 +346,81 @@ Lâm Vũ Linh là cựu đặc vụ giải mã tín hiệu.
       0,
       'the alias "An" must not match "Anh" nor the word "an"'
     );
+  });
+
+  it('16. case-insensitive whole-word lookup never cuts compound words', () => {
+    assert.strictEqual(containsWholeWordUnicode('đang đi', 'an', true), false);
+    assert.strictEqual(containsWholeWordUnicode('An đi', 'an', true), true);
+    assert.deepEqual(findWholeWordOccurrences('đang An toàn', 'an', true), [
+      [5, 7],
+    ]);
+  });
+
+  it('17. attribute mismatch is checked against every character profile', () => {
+    const shortHairCharacter: LoreEntity = {
+      id: 'char_an',
+      entity_type: 'character',
+      title: 'An',
+      aliases: [],
+      file_path: 'lorebook/characters/an.md',
+      status: 'alive',
+      appearance: 'Tóc ngắn ngang vai',
+      tags: [],
+      summary: '',
+      body: '',
+      updated_at: '',
+    };
+
+    const chapter = {
+      ...mockChapter8,
+      paragraphs: ['An bước ra, tóc dài bay trong gió.'],
+    };
+
+    const issues = runContinuityLinterEngine(chapter, [shortHairCharacter]);
+    const attributeIssue = issues.find(
+      (i) => i.rule_id === 'ATTRIBUTE_MISMATCH'
+    );
+    assert.ok(attributeIssue, 'the attribute conflict must be detected');
+    assert.strictEqual(
+      attributeIssue?.entity_id,
+      'char_an',
+      'the issue must point at the character whose profile conflicts'
+    );
+
+    // A character without the conflicting trait must not be flagged.
+    const otherCharacter: LoreEntity = {
+      ...shortHairCharacter,
+      id: 'char_binh',
+      title: 'Bình',
+      appearance: 'Tóc dài buộc gọn',
+    };
+    const cleanIssues = runContinuityLinterEngine(chapter, [otherCharacter]);
+    assert.strictEqual(
+      cleanIssues.filter((i) => i.rule_id === 'ATTRIBUTE_MISMATCH').length,
+      0
+    );
+  });
+
+  it('18. the lossless raw Markdown keeps custom frontmatter keys and their order', () => {
+    const chapter = {
+      ...mockChapter8,
+      extra_frontmatter: { weather: 'Mưa axit' },
+      frontmatter_keys_order: ['id', 'title', 'weather'],
+    };
+
+    const fullMd = serializeChapterToLosslessMarkdown(chapter);
+    const reparsed = parseLosslessMarkdownToChapter(fullMd);
+
+    assert.strictEqual(
+      reparsed.frontmatter.weather,
+      'Mưa axit',
+      'a custom frontmatter key must survive the raw Markdown view'
+    );
+    assert.deepStrictEqual(
+      reparsed.frontmatterKeysOrder.slice(0, 3),
+      ['id', 'title', 'weather'],
+      'the original key order must be preserved'
+    );
+    assert.strictEqual(reparsed.frontmatter.id, 'ch_08');
   });
 });

@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/react';
+import yaml from 'js-yaml';
 import {
   ChapterDocument,
   countVietnameseAndLatinWords,
@@ -200,25 +201,45 @@ export function tipTapDocToParagraphs(doc: JSONContent): string[] {
 
 /**
  * Serializes a `ChapterDocument` into a canonical, lossless Markdown + YAML Frontmatter `.md` string.
+ *
+ * Every standard chapter field and every custom frontmatter key is written, in
+ * the order the file originally declared them.
  */
 export function serializeChapterToLosslessMarkdown(chapter: ChapterDocument): string {
-  const orderedLines: string[] = [
-    `id: "${chapter.id}"`,
-    `title: "${chapter.title.replace(/"/g, '\\"')}"`,
-    `act_id: "${chapter.act_id}"`,
-    `order: ${chapter.order}`,
-    `status: "${chapter.status}"`,
-    `pov: "${chapter.pov_character_name.replace(/"/g, '\\"')}"`,
-    `pov_character_id: "${chapter.pov_character_id}"`,
-    `story_date: "${chapter.story_date.replace(/"/g, '\\"')}"`,
-    `location_id: "${chapter.location_id}"`,
-    `location_tag: "${chapter.location_tag.replace(/"/g, '\\"')}"`,
-    `target_words: ${chapter.target_words}`,
-    `is_flashback: ${chapter.is_flashback ? 'true' : 'false'}`,
-  ];
+  const standard: Record<string, unknown> = {
+    id: chapter.id,
+    title: chapter.title,
+    act_id: chapter.act_id,
+    act_title: chapter.act_title,
+    order: chapter.order,
+    status: chapter.status,
+    pov: chapter.pov_character_name,
+    pov_character_id: chapter.pov_character_id,
+    pov_character_name: chapter.pov_character_name,
+    story_date: chapter.story_date,
+    story_year: chapter.story_year,
+    location_id: chapter.location_id,
+    location_tag: chapter.location_tag,
+    target_words: chapter.target_words,
+    is_flashback: chapter.is_flashback,
+  };
+  const frontmatter: Record<string, unknown> = {
+    ...(chapter.extra_frontmatter ?? {}),
+    ...standard,
+  };
 
+  const declaredOrder = chapter.frontmatter_keys_order ?? [];
+  const ordered: Record<string, unknown> = {};
+  for (const key of [
+    ...declaredOrder.filter((k) => k in frontmatter),
+    ...Object.keys(frontmatter).filter((k) => !declaredOrder.includes(k)),
+  ]) {
+    ordered[key] = frontmatter[key];
+  }
+
+  const yamlStr = yaml.dump(ordered, { lineWidth: 100, noRefs: true }).trimEnd();
   const body = chapter.paragraphs.join('\n\n');
-  return `---\n${orderedLines.join('\n')}\n---\n\n${body}\n`;
+  return `---\n${yamlStr}\n---\n\n${body}\n`;
 }
 
 /**

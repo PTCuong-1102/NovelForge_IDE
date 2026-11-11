@@ -1,9 +1,30 @@
 import yaml from 'js-yaml';
-import { isUnicodeWordBoundary, replaceWholeWordUnicode } from './word-boundary';
+import { isUnicodeWordBoundary, replaceWholeWordUnicode, containsWholeWordUnicode } from './word-boundary';
 
 export type ThemeMode = 'obsidian' | 'parchment' | 'daylight';
 
 export type EntityType = 'character' | 'location' | 'item' | 'chapter';
+
+/**
+ * YAML frontmatter keys owned by the chapter schema. Every other key found in a
+ * chapter file is custom and must be preserved verbatim.
+ */
+export const CHAPTER_FRONTMATTER_KEYS = new Set([
+  'id',
+  'act_id',
+  'act_title',
+  'order',
+  'title',
+  'status',
+  'pov_character_id',
+  'pov_character_name',
+  'story_date',
+  'story_year',
+  'location_id',
+  'location_tag',
+  'target_words',
+  'is_flashback',
+]);
 
 export interface LoreEntity {
   id: string;
@@ -83,6 +104,8 @@ export interface ContinuityIssue {
     id: string;
     label: string;
     action: 'mark_flashback' | 'revive_entity' | 'replace_synonym' | 'ignore_rule';
+    /** Text to write when `action` is `replace_synonym`. */
+    replacement?: string;
   }[];
 }
 
@@ -378,15 +401,58 @@ export function runContinuityLinterEngine(
     }
   }
 
-  // Rule 2: Attribute Consistency Check (e.g., Lâm Vũ Linh has "tóc ngắn ngang vai" in lorebook, warn if "mái tóc dài chấm lưng" is written)
+  // Rule 2: Attribute Consistency Check — every character profile is compared
+  // with the paragraph (mirrors `core_engine/linter.rs`).
+  const ATTRIBUTE_CONFLICTS: Array<[string, string, string]> = [
+    ['tóc ngắn', 'tóc dài', 'mái tóc ngắn ngang vai'],
+    ['tóc dài', 'tóc ngắn', 'mái tóc dài'],
+    ['mắt nâu', 'mắt xanh', 'đôi mắt nâu'],
+    ['mắt đen', 'mắt xanh', 'đôi mắt đen'],
+    ['cụt tay trái', 'vung tay trái', 'cánh tay phải'],
+  ];
+
+  const characterProfiles = entities
+    .filter((e) => e.entity_type === 'character')
+    .map((entity) => ({
+      entity,
+      attributes: [entity.appearance, entity.personality, entity.faction, entity.role]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase(),
+    }))
+    .filter((profile) => profile.attributes.trim().length > 0);
+
   chapter.paragraphs.forEach((para, pIdx) => {
     const lower = para.toLowerCase();
-    if (
-      (lower.includes('lâm vũ linh') || lower.includes('tiểu linh')) &&
-      lower.includes('tóc dài')
-    ) {
-      const issueId = `issue-attr-${chapter.id}-linh-hair-p${pIdx}`;
-      if (!ignoredIssueIds.includes(issueId)) {
+    const mentionedIds = new Set(
+      mentions
+        .filter((m) => m.paragraph_index === pIdx)
+        .map((m) => m.entity_id)
+    );
+
+    for (const profile of characterProfiles) {
+      const isMentioned =
+        mentionedIds.has(profile.entity.id) ||
+        containsWholeWordUnicode(para, profile.entity.title, true) ||
+        (profile.entity.aliases || []).some((alias) =>
+          containsWholeWordUnicode(para, alias, true)
+        );
+      if (!isMentioned) continue;
+
+      for (const [
+        canonicalTrait,
+        conflictingPhrase,
+        suggestedFix,
+      ] of ATTRIBUTE_CONFLICTS) {
+        if (!profile.attributes.includes(canonicalTrait)) continue;
+        if (!lower.includes(conflictingPhrase)) continue;
+
+        const issueId = `issue-attr-${chapter.id}-${profile.entity.id}-${conflictingPhrase.replace(
+          /\s+/g,
+          '_'
+        )}-p${pIdx}`;
+        if (ignoredIssueIds.includes(issueId)) continue;
+
         issues.push({
           id: issueId,
           rule_id: 'ATTRIBUTE_MISMATCH',
@@ -394,17 +460,16 @@ export function runContinuityLinterEngine(
           chapter_id: chapter.id,
           chapter_title: chapter.title,
           paragraph_index: pIdx,
-          matched_text: 'tóc dài',
-          entity_id: 'char_linh_001',
-          message:
-            'Mâu thuẫn thuộc tính nhân vật: Hồ sơ gốc của "Lâm Vũ Linh" ghi nhận ngoại hình "Tóc ngắn ngang vai".',
-          detail:
-            'Đoạn văn đang mô tả "tóc dài", mâu thuẫn với dữ liệu Lorebook chuẩn.',
+          matched_text: conflictingPhrase,
+          entity_id: profile.entity.id,
+          message: `Mâu thuẫn thuộc tính nhân vật: Hồ sơ của "${profile.entity.title}" ghi nhận "${canonicalTrait}", nhưng đoạn văn mô tả "${conflictingPhrase}".`,
+          detail: 'Đoạn văn mâu thuẫn với dữ liệu Lorebook chuẩn.',
           quick_fixes: [
             {
-              id: 'qf-fix-hair',
-              label: '1. Đổi thành "mái tóc ngắn ngang vai" theo Lorebook',
+              id: 'qf-fix-attr',
+              label: `1. Đổi thành "${suggestedFix}" theo Lorebook`,
               action: 'replace_synonym',
+              replacement: suggestedFix,
             },
             {
               id: 'qf-ignore-attr',
@@ -413,6 +478,7 @@ export function runContinuityLinterEngine(
             },
           ],
         });
+        break;
       }
     }
   });

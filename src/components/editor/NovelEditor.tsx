@@ -35,6 +35,9 @@ import {
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useEditorStore } from '@/stores/useEditorStore';
 import { useAgentStore } from '@/stores/useAgentStore';
+import { findWholeWordOccurrences } from '@/lib/word-boundary';
+import { invokeSafe } from '@/lib/ipc';
+import { CHAPTER_FRONTMATTER_KEYS } from '@/lib/tauri-bridge';
 import { ChapterHeaderProperties } from './ChapterHeaderProperties';
 import { SlashMenu } from './SlashMenu';
 import {
@@ -54,7 +57,7 @@ interface NovelEditorProps {
 type EditorCanvasMode = 'blocks' | 'tiptap' | 'markdown';
 
 export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
-  const { entities, updateChapterParagraphs, updateChapterMetadata, openTab } =
+  const { entities, updateChapterParagraphs, updateChapterMetadata, openTab, rootPath } =
     useWorkspaceStore();
   const {
     paragraphFocus,
@@ -292,8 +295,16 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     }
   }, [editingParagraphIndex]);
 
-  const handleParagraphChange = (pIdx: number, newText: string) => {
-    const updated = [...chapter.paragraphs];
+  // Marks the proposal file on disk as resolved so it is not loaded again.
+  const dismissProposalFile = async (proposalId: string) => {
+    if (!rootPath) return;
+    await invokeSafe('dismiss_edit_proposal', {
+      projectRoot: rootPath,
+      proposalId,
+    });
+  };
+
+  const handleParagraphChange = (pIdx: number, newText: string) => {    const updated = [...chapter.paragraphs];
     updated[pIdx] = newText;
     updateChapterParagraphs(chapter.id, updated);
     setGhostDismissedForText(null);
@@ -381,6 +392,14 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     if (typeof fm.is_flashback === 'boolean') {
       metadataPatch.is_flashback = fm.is_flashback;
     }
+    // Custom YAML keys and their declaration order must survive an edit in the
+    // raw Markdown view.
+    const extras: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(fm)) {
+      if (!CHAPTER_FRONTMATTER_KEYS.has(key)) extras[key] = value;
+    }
+    metadataPatch.extra_frontmatter = extras;
+    metadataPatch.frontmatter_keys_order = parsed.frontmatterKeysOrder;
     if (Object.keys(metadataPatch).length > 0) {
       updateChapterMetadata(chapter.id, metadataPatch);
     }
@@ -863,9 +882,10 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
 
                       <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60 text-xs">
                         <button
-                          onClick={() =>
-                            resolveDiffProposal(diffForThisPara.id, 'rejected')
-                          }
+                          onClick={() => {
+                            resolveDiffProposal(diffForThisPara.id, 'rejected');
+                            void dismissProposalFile(diffForThisPara.id);
+                          }}
                           className="px-3 py-1.5 rounded-lg bg-canvas hover:opacity-90 border border-border text-primary transition-colors flex items-center gap-1 font-semibold"
                         >
                           <X size={13} />
@@ -878,6 +898,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
                               diffForThisPara.proposed_text
                             );
                             resolveDiffProposal(diffForThisPara.id, 'accepted');
+                            void dismissProposalFile(diffForThisPara.id);
                           }}
                           className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center gap-1 font-semibold shadow-sm"
                         >
@@ -1203,10 +1224,6 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   );
 };
 
-function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 /**
  * Dynamically decorates raw paragraph text with interactive Lorebook Entity Pills (@Mention/#Location)
  * and Continuity Linter Squiggly Underlines across all 3 themes.
@@ -1282,13 +1299,40 @@ function renderDecoratedParagraph(
     return <span>{text}</span>;
   }
 
-  const patternSource = uniqueSortedTokens.map(escapeRegExp).join('|');
-  const splitRegex = new RegExp(`(${patternSource})`, 'gi');
+  // Whole-word matches only: a character named "An" must not light up "đang".
+  const spans: Array<{ start: number; end: number; token: string }> = [];
+  const taken: Array<[number, number]> = [];
+  for (const token of uniqueSortedTokens) {
+    for (const [start, end] of findWholeWordOccurrences(text, token, true)) {
+      if (taken.some(([s, e]) => !(end <= s || start >= e))) continue;
+      taken.push([start, end]);
+      spans.push({ start, end, token });
+    }
+  }
+  spans.sort((a, b) => a.start - b.start);
+
+  const segments: Array<{ text: string; token?: string }> = [];
+  let segmentCursor = 0;
+  for (const span of spans) {
+    if (span.start > segmentCursor) {
+      segments.push({ text: text.slice(segmentCursor, span.start) });
+    }
+    segments.push({
+      text: text.slice(span.start, span.end),
+      token: span.token,
+    });
+    segmentCursor = span.end;
+  }
+  if (segmentCursor < text.length) {
+    segments.push({ text: text.slice(segmentCursor) });
+  }
 
   return (
     <span>
-      {text.split(splitRegex).map((chunk, i) => {
-        if (!chunk) return null;
+      {segments.map((segment, i) => {
+        if (!segment.token) return <span key={i}>{segment.text}</span>;
+
+        const chunk = segment.text;
         const lower = chunk.toLowerCase();
         const matchedEntity = entityMapByName.get(lower);
 
