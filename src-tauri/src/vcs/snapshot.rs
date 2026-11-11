@@ -334,8 +334,14 @@ pub fn restore_snapshot(
         .map_err(|e| GitError::new("GIT_FAILURE", e.to_string()))?;
 
     // Safe restore: overwrite only files tracked under manuscript/ and lorebook/
-    // from the snapshot tree. Never moves HEAD, never touches other paths,
-    // never deletes untracked files.
+    // from the snapshot tree, and remove any .md files under manuscript/ or
+    // lorebook/ that did not exist in the snapshot tree. Never moves HEAD and
+    // never touches paths outside manuscript/ and lorebook/.
+    let root = Path::new(&project_root);
+    for scoped_dir in ["manuscript", "lorebook"] {
+        prune_markdown_absent_from_tree(root, &root.join(scoped_dir), &tree);
+    }
+
     let mut checkout = git2::build::CheckoutBuilder::new();
     checkout.force().path("manuscript").path("lorebook");
 
@@ -343,6 +349,28 @@ pub fn restore_snapshot(
         .map_err(|e| GitError::new("RESTORE_FAILED", e.to_string()))?;
 
     Ok(())
+}
+
+/// Removes `.md` files inside `dir` (relative to `project_root`) that are not
+/// present in `tree`, so restoring an older snapshot cleans up chapters or lore
+/// entries created after that snapshot was taken.
+fn prune_markdown_absent_from_tree(project_root: &Path, dir: &Path, tree: &git2::Tree) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            prune_markdown_absent_from_tree(project_root, &path, tree);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            if let Ok(rel) = path.strip_prefix(project_root) {
+                if tree.get_path(rel).is_err() {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -558,5 +586,35 @@ mod tests {
         assert_eq!(list[1].label, "rev one");
         assert_eq!(list[1].total_words, 3);
         assert_eq!(list[1].word_count_delta, 3);
+    }
+
+    #[test]
+    fn restore_snapshot_removes_chapters_added_after_snapshot() {
+        let dir = setup_repo();
+        let root = dir.path().to_string_lossy().to_string();
+
+        fs::write(dir.path().join("manuscript/ch-01.md"), "alpha beta gamma\n").unwrap();
+        let snap1 = create_snapshot(root.clone(), None, "before ch-02".to_string()).unwrap();
+
+        // Create a second chapter and a lorebook file after snap1.
+        fs::create_dir_all(dir.path().join("lorebook/characters")).unwrap();
+        fs::write(dir.path().join("manuscript/ch-02.md"), "new chapter prose\n").unwrap();
+        fs::write(dir.path().join("lorebook/characters/hero.md"), "new hero\n").unwrap();
+        create_snapshot(root.clone(), None, "with ch-02".to_string()).unwrap();
+
+        restore_snapshot(root, snap1.id, true).unwrap();
+
+        assert!(
+            dir.path().join("manuscript/ch-01.md").exists(),
+            "ch-01 existed in snap1 and must remain"
+        );
+        assert!(
+            !dir.path().join("manuscript/ch-02.md").exists(),
+            "ch-02 was created after snap1 and must be removed on restore"
+        );
+        assert!(
+            !dir.path().join("lorebook/characters/hero.md").exists(),
+            "lorebook file created after snap1 must be removed on restore"
+        );
     }
 }

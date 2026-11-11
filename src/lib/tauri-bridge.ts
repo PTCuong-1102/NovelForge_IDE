@@ -483,7 +483,84 @@ export function runContinuityLinterEngine(
     }
   });
 
-  // Rule 3: Style & Pacing Warning (Repetition of two-word phrases or adjectives like "lạnh lẽo" >= 3 times in chapter)
+  // Rule 3A: Single-word repetition within a paragraph (>= 4 times, word length >= 4 chars)
+  chapter.paragraphs.forEach((para, pIdx) => {
+    const words = para
+      .split(/\s+/)
+      .map((w) =>
+        w
+          .replace(
+            /^[!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~«»“”‘’]+|[!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~«»“”‘’]+$/g,
+            ''
+          )
+          .toLowerCase()
+      )
+      .filter((w) => Array.from(w).length >= 4);
+
+    const counts = new Map<string, number>();
+    for (const w of words) {
+      counts.set(w, (counts.get(w) ?? 0) + 1);
+    }
+
+    for (const [word, count] of counts.entries()) {
+      if (count >= 4) {
+        const issueId = `issue-rep-word-${chapter.id}-p${pIdx}-${word}`;
+        if (!ignoredIssueIds.includes(issueId)) {
+          issues.push({
+            id: issueId,
+            rule_id: 'PACING_REPETITION',
+            severity: 'warning',
+            chapter_id: chapter.id,
+            chapter_title: chapter.title,
+            paragraph_index: pIdx,
+            matched_text: word,
+            message: `Cảnh báo nhịp điệu: Từ "${word}" lặp lại ${count} lần trong cùng một đoạn văn.`,
+            detail: 'Mật độ lặp từ đơn cao trong một đoạn văn làm giảm sự mượt mà của câu chữ.',
+            quick_fixes: [
+              {
+                id: 'qf-ignore-word-rep',
+                label: '1. Bỏ qua cảnh báo văn phong này',
+                action: 'ignore_rule',
+              },
+            ],
+          });
+        }
+      }
+    }
+
+    // Rule 3B: Sentence length check (> 65 words in a single sentence)
+    const sentences = para.split(/[.!?…]+/);
+    for (const sentence of sentences) {
+      const tokens = sentence.trim().split(/\s+/).filter(Boolean);
+      if (tokens.length > 65) {
+        const issueId = `issue-sentence-len-${chapter.id}-p${pIdx}`;
+        if (!ignoredIssueIds.includes(issueId)) {
+          const previewSnippet = tokens.slice(0, 6).join(' ');
+          issues.push({
+            id: issueId,
+            rule_id: 'SENTENCE_LENGTH',
+            severity: 'warning',
+            chapter_id: chapter.id,
+            chapter_title: chapter.title,
+            paragraph_index: pIdx,
+            matched_text: previewSnippet,
+            message: `Câu văn quá dài (${tokens.length} từ): Có thể làm giảm nhịp độ đọc. Nên tách thành 2 câu ngắn gọn hơn.`,
+            detail: 'Câu văn vượt quá 65 từ dễ gây hụt hơi cho người đọc.',
+            quick_fixes: [
+              {
+                id: 'qf-ignore-sentence-len',
+                label: '1. Bỏ qua cảnh báo độ dài câu',
+                action: 'ignore_rule',
+              },
+            ],
+          });
+        }
+        break;
+      }
+    }
+  });
+
+  // Rule 3C: Style & Pacing Warning (Repetition of two-word phrases or adjectives like "lạnh lẽo" >= 3 times in chapter)
   const trackedPhrases = ['lạnh lẽo', 'nặng nề', 'bóng tối'];
   const pacingSynonyms: Record<string, string> = {
     'lạnh lẽo': 'buốt lạnh',

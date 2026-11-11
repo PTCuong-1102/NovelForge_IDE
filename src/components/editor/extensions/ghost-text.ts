@@ -176,7 +176,7 @@ export const AiGhostTextExtension = Extension.create<AiGhostTextOptions>({
             const widgetPos = $pos.end();
             const widget = Decoration.widget(
               widgetPos,
-              () => {
+              (view) => {
                 const span = document.createElement('span');
                 span.className = 'ai-ghost-text-widget select-none pointer-events-auto';
                 span.setAttribute('data-ghost-text', 'true');
@@ -189,6 +189,10 @@ export const AiGhostTextExtension = Extension.create<AiGhostTextOptions>({
                 badge.onmousedown = (e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  if (view) {
+                    const insertPos = view.state.selection.$from.end();
+                    view.dispatch(view.state.tr.insertText(suggestion, insertPos));
+                  }
                   extOptions.onAcceptSuggestion?.(suggestion, activeParaIdx);
                 };
 

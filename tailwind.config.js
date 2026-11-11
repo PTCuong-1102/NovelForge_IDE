@@ -34,6 +34,12 @@ module.exports = {
         serif: ["var(--font-serif)", "Literata", "Merriweather", "Charter", "Georgia", "serif"],
         mono: ["var(--font-mono)", "JetBrains Mono", "Fira Code", "monospace"],
       },
+      spacing: {
+        68: "17rem",
+        76: "19rem",
+        84: "21rem",
+        88: "22rem",
+      },
     },
   },
   plugins: [],

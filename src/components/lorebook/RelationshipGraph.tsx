@@ -14,9 +14,9 @@ import {
   NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Share2, Clock, ChevronRight } from 'lucide-react';
+import { Share2, Clock, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
-import { LoreEntity } from '@/lib/tauri-bridge';
+import { CharacterRelationEdge, LoreEntity } from '@/lib/tauri-bridge';
 
 interface CharacterNodeData extends Record<string, unknown> {
   entity: LoreEntity;
@@ -107,9 +107,38 @@ const nodeTypes = {
 };
 
 export const RelationshipGraph: React.FC = () => {
-  const { entities, relations, openTab } = useWorkspaceStore();
-  const [chapterFilter, setChapterFilter] = useState(8);
+  const {
+    chapters,
+    entities,
+    relations,
+    openTab,
+    addRelation,
+    removeRelation,
+  } = useWorkspaceStore();
+
+  const maxChapter = useMemo(
+    () =>
+      Math.max(
+        1,
+        chapters.reduce((max, c) => Math.max(max, c.order), chapters.length),
+        relations.reduce(
+          (max, r) => Math.max(max, r.max_chapter ?? r.min_chapter),
+          1
+        )
+      ),
+    [chapters, relations]
+  );
+
+  const [chapterFilter, setChapterFilter] = useState(() =>
+    Math.min(8, maxChapter)
+  );
+  const effectiveChapterFilter = Math.min(chapterFilter, maxChapter);
+
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [newTargetId, setNewTargetId] = useState('');
+  const [newRelationType, setNewRelationType] =
+    useState<CharacterRelationEdge['relation_type']>('ally');
+  const [newRelationLabel, setNewRelationLabel] = useState('');
 
   const characters = useMemo(
     () => entities.filter((e) => e.entity_type === 'character'),
@@ -127,10 +156,10 @@ export const RelationshipGraph: React.FC = () => {
     () =>
       relations.filter(
         (r) =>
-          r.min_chapter <= chapterFilter &&
-          (!r.max_chapter || r.max_chapter >= chapterFilter)
+          r.min_chapter <= effectiveChapterFilter &&
+          (!r.max_chapter || r.max_chapter >= effectiveChapterFilter)
       ),
-    [relations, chapterFilter]
+    [relations, effectiveChapterFilter]
   );
 
   // Position nodes in an aesthetic circular/force layout
@@ -169,7 +198,7 @@ export const RelationshipGraph: React.FC = () => {
       const isDead =
         ch.status === 'dead' &&
         ch.death_chapter_order !== undefined &&
-        chapterFilter >= ch.death_chapter_order;
+        effectiveChapterFilter >= ch.death_chapter_order;
 
       result.push({
         id: ch.id,
@@ -187,7 +216,7 @@ export const RelationshipGraph: React.FC = () => {
     });
 
     return result;
-  }, [characters, selectedNodeId, chapterFilter]);
+  }, [characters, centerCharacterId, selectedNodeId, effectiveChapterFilter]);
 
   // Edges mapped to React Flow specification
   const edges: Edge[] = useMemo(() => {
@@ -261,12 +290,14 @@ export const RelationshipGraph: React.FC = () => {
         <div className="flex items-center gap-3 bg-elevated px-3 py-1.5 rounded-xl border border-border">
           <Clock size={13} className="text-muted" />
           <span className="text-muted font-medium">Trục thời gian:</span>
-          <span className="font-bold text-accent">Chương {chapterFilter}</span>
+          <span className="font-bold text-accent">
+            Chương {effectiveChapterFilter} / {maxChapter}
+          </span>
           <input
             type="range"
             min={1}
-            max={20}
-            value={chapterFilter}
+            max={maxChapter}
+            value={effectiveChapterFilter}
             onChange={(e) => setChapterFilter(Number(e.target.value))}
             className="w-36 accent-emerald-600 cursor-pointer"
           />
@@ -367,7 +398,7 @@ export const RelationshipGraph: React.FC = () => {
               {/* Active Relations */}
               <div className="mt-5">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-2">
-                  Quan Hệ Tại Mốc Chương {chapterFilter}:
+                  Quan Hệ Tại Mốc Chương {effectiveChapterFilter}:
                 </span>
                 <div className="space-y-2">
                   {activeRelations
@@ -386,28 +417,119 @@ export const RelationshipGraph: React.FC = () => {
                       return (
                         <div
                           key={rel.id}
-                          className="p-2.5 rounded-xl bg-elevated border border-border flex items-center justify-between"
+                          className="p-2.5 rounded-xl bg-elevated border border-border flex items-center justify-between gap-2"
                         >
-                          <span className="font-bold text-primary">
+                          <span className="font-bold text-primary truncate">
                             {other?.title || 'Ẩn'}
                           </span>
-                          <span
-                            className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${
-                              rel.relation_type === 'enemy'
-                                ? 'semantic-error-box'
-                                : rel.relation_type === 'mentor'
-                                ? 'semantic-info-box'
-                                : rel.relation_type === 'betrayal'
-                                ? 'semantic-warning-box'
-                                : 'semantic-success-box'
-                            }`}
-                          >
-                            {rel.label}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${
+                                rel.relation_type === 'enemy'
+                                  ? 'semantic-error-box'
+                                  : rel.relation_type === 'mentor'
+                                  ? 'semantic-info-box'
+                                  : rel.relation_type === 'betrayal'
+                                  ? 'semantic-warning-box'
+                                  : 'semantic-success-box'
+                              }`}
+                            >
+                              {rel.label}
+                            </span>
+                            <button
+                              onClick={() => removeRelation(rel.id)}
+                              title="Xóa mối quan hệ này"
+                              className="p-1 rounded hover:bg-canvas text-muted hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
                 </div>
+
+                {/* Add Relation Form */}
+                {characters.filter((c) => c.id !== selectedEntity.id).length >
+                  0 && (
+                  <div className="mt-4 pt-3 border-t border-border space-y-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted block">
+                      Thêm Quan Hệ Mới:
+                    </span>
+                    <select
+                      value={newTargetId}
+                      onChange={(e) => setNewTargetId(e.target.value)}
+                      className="w-full bg-elevated border border-border rounded-lg px-2 py-1.5 text-primary text-xs focus:outline-none focus:border-accent"
+                    >
+                      <option value="">-- Chọn nhân vật đích --</option>
+                      {characters
+                        .filter((c) => c.id !== selectedEntity.id)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.title}
+                          </option>
+                        ))}
+                    </select>
+                    <div className="flex gap-1.5">
+                      <select
+                        value={newRelationType}
+                        onChange={(e) =>
+                          setNewRelationType(
+                            e.target.value as CharacterRelationEdge['relation_type']
+                          )
+                        }
+                        className="bg-elevated border border-border rounded-lg px-2 py-1.5 text-primary text-xs focus:outline-none focus:border-accent"
+                      >
+                        <option value="ally">Đồng minh</option>
+                        <option value="enemy">Kẻ thù</option>
+                        <option value="mentor">Sư phụ / Tiền bối</option>
+                        <option value="betrayal">Phản bội</option>
+                        <option value="romance">Tình cảm</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={newRelationLabel}
+                        onChange={(e) => setNewRelationLabel(e.target.value)}
+                        placeholder="Nhãn (VD: Đồng đội)"
+                        className="flex-1 min-w-0 bg-elevated border border-border rounded-lg px-2 py-1.5 text-primary text-xs focus:outline-none focus:border-accent"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        const target =
+                          newTargetId ||
+                          characters.find((c) => c.id !== selectedEntity.id)?.id;
+                        if (!target) return;
+                        const defaultLabels: Record<
+                          CharacterRelationEdge['relation_type'],
+                          string
+                        > = {
+                          ally: 'Đồng minh',
+                          enemy: 'Kẻ thù',
+                          mentor: 'Tiền bối',
+                          betrayal: 'Phản bội',
+                          romance: 'Tình cảm',
+                        };
+                        addRelation({
+                          source_id: selectedEntity.id,
+                          target_id: target,
+                          relation_type: newRelationType,
+                          label:
+                            newRelationLabel.trim() ||
+                            defaultLabels[newRelationType],
+                          min_chapter: 1,
+                          max_chapter: Math.max(20, maxChapter),
+                        });
+                        setNewRelationLabel('');
+                      }}
+                      disabled={!newTargetId}
+                      className="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <Plus size={13} />
+                      <span>Thêm liên kết</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -153,4 +153,11 @@ Cần thêm cảnh chiến đấu ở đây trước khi gửi cho biên tập.
     assert.ok(docXml.includes('Cảnh 2'), 'chapter headings must be emitted');
     assert.ok(docXml.includes('súng lục'), 'bold text must be emitted');
   });
+
+  await t.test('10. markdownBlockToHtml formats [!GHI_CHÚ_TÁC_GIẢ] cleanly when stripAuthorNotes is false', () => {
+    const html = markdownBlockToHtml('> [!GHI_CHÚ_TÁC_GIẢ]\nCần bổ sung chi tiết kiếm pháp.');
+    assert.ok(!html.includes('[!GHI_CHÚ_TÁC_GIẢ]'), `raw callout marker leaked: ${html}`);
+    assert.ok(html.includes('Ghi chú tác giả'), `missing readable label: ${html}`);
+    assert.ok(html.includes('Cần bổ sung chi tiết kiếm pháp.'), `missing note body: ${html}`);
+  });
 });

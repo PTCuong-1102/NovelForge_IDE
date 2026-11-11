@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { LoreEntity } from '@/lib/tauri-bridge';
+import { titleSlug } from '@/lib/chapter-file-name';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 
 export const LoreDatabaseView: React.FC = () => {
@@ -77,12 +78,21 @@ export const LoreDatabaseView: React.FC = () => {
             <button
               onClick={() => {
                 const newId = `char_new_${Date.now()}`;
+                const existingPaths = new Set(entities.map((e) => e.file_path));
+                let seq = entities.filter((e) => e.entity_type === 'character').length + 1;
+                let newTitle = `Nhân Vật Mới ${seq}`;
+                let filePath = `lorebook/characters/${titleSlug(newTitle)}.md`;
+                while (existingPaths.has(filePath)) {
+                  seq += 1;
+                  newTitle = `Nhân Vật Mới ${seq}`;
+                  filePath = `lorebook/characters/${titleSlug(newTitle)}.md`;
+                }
                 const newEnt: LoreEntity = {
                   id: newId,
                   entity_type: 'character',
-                  title: 'Nhân Vật Mới',
+                  title: newTitle,
                   aliases: [],
-                  file_path: `lorebook/characters/nhan-vat-moi-${Date.now()}.md`,
+                  file_path: filePath,
                   status: 'alive',
                   tags: ['nhân vật mới'],
                   summary: 'Mô tả tóm tắt nhân vật mới...',

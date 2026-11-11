@@ -56,6 +56,7 @@ export default function WorkbenchPage() {
   const {
     openCommandPalette,
     openRefactorModal,
+    setPublishModalOpen,
     findUsagesEntityId,
     activeChapterId,
   } = useEditorStore();
@@ -171,6 +172,43 @@ export default function WorkbenchPage() {
         }
         return;
       }
+
+      // 7. Activity Bar Views (Ctrl+Shift+E / L / F / G / M)
+      if (isCmdOrCtrl && e.shiftKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'e') {
+          e.preventDefault();
+          setActiveActivity('explorer');
+          return;
+        }
+        if (key === 'l') {
+          e.preventDefault();
+          setActiveActivity('lorebook');
+          return;
+        }
+        if (key === 'f') {
+          e.preventDefault();
+          setActiveActivity('search');
+          return;
+        }
+        if (key === 'g') {
+          e.preventDefault();
+          setActiveActivity('git');
+          return;
+        }
+        if (key === 'm') {
+          e.preventDefault();
+          setActiveActivity('inspector');
+          return;
+        }
+      }
+
+      // 8. Export & Publish Modal (Ctrl+E)
+      if (isCmdOrCtrl && !e.shiftKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        setPublishModalOpen(true);
+        return;
+      }
     };
 
     window.addEventListener('keydown', handleGlobalKeydown);
@@ -178,6 +216,8 @@ export default function WorkbenchPage() {
   }, [
     openCommandPalette,
     openRefactorModal,
+    setPublishModalOpen,
+    setActiveActivity,
     toggleSplitView,
     toggleZenMode,
     createGitSnapshot,

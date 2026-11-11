@@ -1,4 +1,9 @@
-import type { ChapterDocument, LoreEntity, EntityType } from './tauri-bridge';
+import type {
+  ChapterDocument,
+  CharacterRelationEdge,
+  LoreEntity,
+  EntityType,
+} from './tauri-bridge';
 import { CHAPTER_FRONTMATTER_KEYS } from './tauri-bridge';
 import { isTauri, invokeSafe } from './ipc';
 
@@ -29,6 +34,7 @@ export interface ProjectLoadResult {
   projectName: string;
   chapters: ChapterDocument[];
   entities: LoreEntity[];
+  relations: CharacterRelationEdge[];
 }
 
 const str = (v: unknown, fallback = ''): string =>
@@ -239,6 +245,42 @@ export function entityToFrontmatter(e: LoreEntity): Record<string, unknown> {
   return fm;
 }
 
+export function extractRelationsFromEntities(
+  entities: LoreEntity[]
+): CharacterRelationEdge[] {
+  const relations: CharacterRelationEdge[] = [];
+  for (const entity of entities) {
+    const rawList = entity.extra_frontmatter?.relations;
+    if (!Array.isArray(rawList)) continue;
+    for (let i = 0; i < rawList.length; i++) {
+      const item = rawList[i];
+      if (!item || typeof item !== 'object') continue;
+      const rec = item as Record<string, unknown>;
+      const targetId = str(rec.target_id);
+      if (!targetId) continue;
+      const relTypeRaw = str(rec.relation_type, 'ally');
+      const relationType: CharacterRelationEdge['relation_type'] =
+        relTypeRaw === 'enemy' ||
+        relTypeRaw === 'mentor' ||
+        relTypeRaw === 'betrayal' ||
+        relTypeRaw === 'romance' ||
+        relTypeRaw === 'ally'
+          ? relTypeRaw
+          : 'ally';
+      relations.push({
+        id: str(rec.id, `rel-${entity.id}-${targetId}-${i}`),
+        source_id: entity.id,
+        target_id: targetId,
+        relation_type: relationType,
+        label: str(rec.label, relationType),
+        min_chapter: num(rec.min_chapter, 1),
+        max_chapter: num(rec.max_chapter, 999),
+      });
+    }
+  }
+  return relations;
+}
+
 export function basename(path: string): string {
   const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
   return parts.length ? parts[parts.length - 1] : path;
@@ -288,7 +330,12 @@ export async function loadProject(
 
   return {
     ok: true,
-    data: { projectName: basename(projectRoot), chapters, entities },
+    data: {
+      projectName: basename(projectRoot),
+      chapters,
+      entities,
+      relations: extractRelationsFromEntities(entities),
+    },
   };
 }
 

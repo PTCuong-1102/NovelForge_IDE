@@ -28,10 +28,11 @@ pub fn canonical_within(root: &Path, candidate: &Path) -> Result<PathBuf, FsErro
         .canonicalize()
         .map_err(|e| FsError::Io(format!("Invalid root: {}", e)))?;
 
-    // The git internals of a project are never a valid write target.
+    // The git and internal index directories of a project are never a valid write target.
     for comp in candidate.components() {
         if let Component::Normal(os) = comp {
-            if os.to_string_lossy().eq_ignore_ascii_case(".git") {
+            let name = os.to_string_lossy();
+            if name.eq_ignore_ascii_case(".git") || name.eq_ignore_ascii_case(".novelforge") {
                 return Err(FsError::OutsideProjectRoot);
             }
         }

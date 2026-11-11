@@ -79,4 +79,21 @@ test('Compile Manuscript Pipeline Tests', async (t) => {
     assert.ok(result.appendixHtml.includes('Linh'));
     assert.ok(result.appendixHtml.includes('Hải Phòng'));
   });
+
+  await t.test('4. Sorts chapters by act_id before order when acts restart chapter numbering', () => {
+    const result = compileManuscript({
+      projectName: 'Đa Hồi',
+      chapters: [
+        { id: 'ch_2_1', act_id: 'act-02', title: 'Hồi 2 - Chương 1', order: 1, content: 'Hai một.' },
+        { id: 'ch_1_2', act_id: 'act-01', title: 'Hồi 1 - Chương 2', order: 2, content: 'Một hai.' },
+        { id: 'ch_1_1', act_id: 'act-01', title: 'Hồi 1 - Chương 1', order: 1, content: 'Một một.' },
+        { id: 'ch_2_2', act_id: 'act-02', title: 'Hồi 2 - Chương 2', order: 2, content: 'Hai hai.' },
+      ],
+    });
+
+    assert.deepStrictEqual(
+      result.chapters.map((c) => c.id),
+      ['ch_1_1', 'ch_1_2', 'ch_2_1', 'ch_2_2']
+    );
+  });
 });

@@ -48,12 +48,21 @@ export function markdownBlockToHtml(block: string): string {
   if (trimmed.startsWith('### ')) {
     return `<h3>${escapeHtml(trimmed.slice(4).trim())}</h3>`;
   }
+  const authorNoteMatch = trimmed.match(
+    /^>\s*\[!(?:GHI_CHÚ_TÁC_GIẢ|GHI_CHU_TAC_GIA|AUTHOR_NOTE)\]\s*([\s\S]*)$/i
+  );
+  if (authorNoteMatch) {
+    const noteBody = authorNoteMatch[1].trim();
+    return `<aside class="author-note"><strong>Ghi chú tác giả:</strong> ${formatInlineMarkdownSafe(
+      escapeHtml(noteBody)
+    )}</aside>`;
+  }
   if (trimmed.startsWith('> ')) {
     return `<blockquote>${formatInlineMarkdownSafe(
       escapeHtml(trimmed.slice(2).trim())
     )}</blockquote>`;
   }
-  if (trimmed.startsWith('*') && trimmed.endsWith('*') && trimmed.length > 2) {
+  if (/^\*[^*\n]+\*$/.test(trimmed)) {
     return `<div class="meta">${escapeHtml(trimmed.slice(1, -1))}</div>`;
   }
   return `<p>${formatInlineMarkdownSafe(escapeHtml(trimmed))}</p>`;

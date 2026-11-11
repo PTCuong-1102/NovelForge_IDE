@@ -43,7 +43,9 @@ export const PublishModal: React.FC = () => {
     0
   );
 
-  const sortedChapters = [...chapters].sort((a, b) => a.order - b.order);
+  const sortedChapters = [...chapters].sort(
+    (a, b) => (a.act_id ?? '').localeCompare(b.act_id ?? '') || a.order - b.order
+  );
 
   const handleExport = async () => {
     setIsExporting(true);

@@ -184,12 +184,14 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   const ghostVariantRef = useRef(ghostVariantIndex);
   ghostVariantRef.current = ghostVariantIndex;
 
+  const suppressNextBlurRef = useRef(false);
+
   const handleOpenEntityCard = useCallback(
     (ent: LoreEntity, clientX: number, clientY: number) => {
       setHoveredEntity(ent);
       setHoverCardPos({
-        x: Math.min(clientX, window.innerWidth - 340),
-        y: clientY + 14,
+        x: Math.max(16, Math.min(clientX, window.innerWidth - 360)),
+        y: Math.max(16, Math.min(clientY + 14, window.innerHeight - 320)),
       });
     },
     []
@@ -199,8 +201,8 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     (issue: ContinuityIssue, clientX: number, clientY: number) => {
       setActiveIssuePopover({
         issue,
-        x: Math.min(clientX, window.innerWidth - 360),
-        y: clientY + 14,
+        x: Math.max(16, Math.min(clientX, window.innerWidth - 380)),
+        y: Math.max(16, Math.min(clientY + 14, window.innerHeight - 320)),
       });
     },
     []
@@ -237,6 +239,9 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
             entitiesRef.current,
             ghostVariantRef.current
           ),
+        onAcceptSuggestion: () => {
+          setGhostVariantIndex((prev) => prev + 1);
+        },
         onCycleSuggestion: () => {
           setGhostVariantIndex((prev) => prev + 1);
         },
@@ -245,12 +250,34 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
         },
       }),
     ],
+    editorProps: {
+      handleKeyDown: (view, event) => {
+        if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          const { $from } = view.state.selection;
+          const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
+          if (!textBefore || /\s$/.test(textBefore)) {
+            let paraIdx = 0;
+            let activeIdx = 0;
+            view.state.doc.descendants((node, pos) => {
+              if (!node.isTextblock) return true;
+              if (pos < $from.pos && $from.pos <= pos + node.nodeSize) {
+                activeIdx = paraIdx;
+              }
+              paraIdx += 1;
+              return false;
+            });
+            event.preventDefault();
+            setSlashMenu(true, activeIdx);
+            return true;
+          }
+        }
+        return false;
+      },
+    },
     content: paragraphsToTipTapDoc(chapter.paragraphs),
     onUpdate: ({ editor }) => {
       const serializedParagraphs = tipTapDocToParagraphs(editor.getJSON());
-      if (serializedParagraphs.length > 0) {
-        updateChapterParagraphs(chapterRef.current.id, serializedParagraphs);
-      }
+      updateChapterParagraphs(chapterRef.current.id, serializedParagraphs);
     },
   });
 
@@ -326,9 +353,14 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     e: React.KeyboardEvent<HTMLTextAreaElement>,
     pIdx: number
   ) => {
-    if (e.key === '/') {
-      setSlashMenu(true, pIdx);
-      return;
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const caret = e.currentTarget.selectionStart ?? e.currentTarget.value.length;
+      const textBefore = e.currentTarget.value.slice(0, caret);
+      if (!textBefore || /\s$/.test(textBefore)) {
+        e.preventDefault();
+        setSlashMenu(true, pIdx);
+        return;
+      }
     }
 
     // Tab accepts and Esc rejects the inline diff of the focused paragraph.
@@ -374,6 +406,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
     // Enter without Shift inserts a new paragraph right below and moves focus
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      suppressNextBlurRef.current = true;
       const updated = [...chapter.paragraphs];
       updated.splice(pIdx + 1, 0, '');
       updateChapterParagraphs(chapter.id, updated);
@@ -386,9 +419,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
   const handleRawMarkdownChange = (nextRaw: string) => {
     setRawMarkdownDraft(nextRaw);
     const parsed = parseLosslessMarkdownToChapter(nextRaw);
-    if (parsed.paragraphs.length > 0) {
-      updateChapterParagraphs(chapter.id, parsed.paragraphs);
-    }
+    updateChapterParagraphs(chapter.id, parsed.paragraphs);
     const fm = parsed.frontmatter;
     const metadataPatch: Partial<ChapterDocument> = {};
 
@@ -778,7 +809,13 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
                           handleParagraphChange(pIdx, e.target.value)
                         }
                         onKeyDown={(e) => handleKeyDown(e, pIdx)}
-                        onBlur={() => setEditingParagraphIndex(null)}
+                        onBlur={() => {
+                          if (suppressNextBlurRef.current) {
+                            suppressNextBlurRef.current = false;
+                            return;
+                          }
+                          setEditingParagraphIndex(null);
+                        }}
                         style={{
                           fontSize: `${proseFontSize}px`,
                           lineHeight: 1.85,
@@ -1213,6 +1250,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
               const updated = [...chapter.paragraphs];
               updated.splice(slashMenuParagraphIndex + 1, 0, '***');
               updateChapterParagraphs(chapter.id, updated);
+              tiptapEditor?.commands.setContent(paragraphsToTipTapDoc(updated), false);
               setSlashMenu(false);
             }}
             onInsertFlashback={() => {
@@ -1223,6 +1261,7 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
                 '[Hồi tưởng] Bắt đầu đoạn hồi tưởng quá khứ tại đây...'
               );
               updateChapterParagraphs(chapter.id, updated);
+              tiptapEditor?.commands.setContent(paragraphsToTipTapDoc(updated), false);
               setSlashMenu(false);
             }}
             onInsertAuthorNote={() => {
@@ -1233,18 +1272,23 @@ export const NovelEditor: React.FC<NovelEditorProps> = ({ chapter }) => {
                 '> [!GHI_CHÚ_TÁC_GIẢ] Nhớ kiểm tra lại sự hiện diện của ổ khóa Thần Nông trước cảnh rượt đuổi.'
               );
               updateChapterParagraphs(chapter.id, updated);
+              tiptapEditor?.commands.setContent(paragraphsToTipTapDoc(updated), false);
               setSlashMenu(false);
             }}
             onInsertCharacter={() => {
               const updated = [...chapter.paragraphs];
-              updated[slashMenuParagraphIndex] += ` ${povName}`;
+              const idx = Math.min(slashMenuParagraphIndex, Math.max(0, updated.length - 1));
+              updated[idx] = `${(updated[idx] || '').trimEnd()} ${povName}`.trim();
               updateChapterParagraphs(chapter.id, updated);
+              tiptapEditor?.commands.setContent(paragraphsToTipTapDoc(updated), false);
               setSlashMenu(false);
             }}
             onInsertLocation={() => {
               const updated = [...chapter.paragraphs];
-              updated[slashMenuParagraphIndex] += ` ${locationName}`;
+              const idx = Math.min(slashMenuParagraphIndex, Math.max(0, updated.length - 1));
+              updated[idx] = `${(updated[idx] || '').trimEnd()} ${locationName}`.trim();
               updateChapterParagraphs(chapter.id, updated);
+              tiptapEditor?.commands.setContent(paragraphsToTipTapDoc(updated), false);
               setSlashMenu(false);
             }}
             onAiContinue={() => {

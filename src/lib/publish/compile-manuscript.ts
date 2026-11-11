@@ -26,6 +26,7 @@ export interface CompiledManuscript {
 
 export interface ChapterInput {
   id: string;
+  act_id?: string;
   title: string;
   paragraphs?: string[];
   content?: string;
@@ -68,7 +69,9 @@ export function compileManuscript(options: CompileManuscriptOptions): CompiledMa
     throw new Error('EMPTY_MANUSCRIPT');
   }
 
-  const sorted = [...chapters].sort((a, b) => a.order - b.order);
+  const sorted = [...chapters].sort(
+    (a, b) => (a.act_id ?? '').localeCompare(b.act_id ?? '') || a.order - b.order
+  );
   let totalWords = 0;
   const compiledChapters: CompiledChapter[] = [];
 

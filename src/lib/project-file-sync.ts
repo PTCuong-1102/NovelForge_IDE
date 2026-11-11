@@ -2,8 +2,13 @@ import { chapterIdFromFileName, titleSlug } from './chapter-file-name';
 
 export interface DiskFileIdentifier {
   relativePath: string;
+  relative_path?: string;
   id: string;
   title: string;
+}
+
+function normalizeRelativePath(file: DiskFileIdentifier): string {
+  return (file.relativePath ?? file.relative_path ?? '').replace(/\\/g, '/');
 }
 
 export interface IdentifierReconciliation {
@@ -40,18 +45,19 @@ export function reconcileIdentifiers(
     const found = byId.get(item.id);
     if (!found) continue;
 
-    const diskName = found.relativePath.split('/').pop() ?? '';
+    const relPath = normalizeRelativePath(found);
+    const diskName = relPath.split('/').pop() ?? '';
 
-    if (found.relativePath.startsWith('manuscript/')) {
+    if (relPath.startsWith('manuscript/')) {
       // The disk path wins; a file name carrying another id is reported.
-      if (found.relativePath !== item.file_path) {
-        filePaths[item.id] = found.relativePath;
+      if (relPath !== item.file_path) {
+        filePaths[item.id] = relPath;
       }
       const idInFileName = chapterIdFromFileName(diskName);
       if (idInFileName && idInFileName !== item.id) {
         mismatches.push({
           id: item.id,
-          relativePath: found.relativePath,
+          relativePath: relPath,
           idInFileName,
         });
       }
@@ -61,17 +67,46 @@ export function reconcileIdentifiers(
     // A lorebook file name follows the title slug: restore it when it drifted.
     const expectedName = `${titleSlug(found.title)}.md`;
     if (found.title && diskName !== expectedName) {
-      const directory = found.relativePath.slice(
+      const directory = relPath.slice(
         0,
-        found.relativePath.length - diskName.length
+        relPath.length - diskName.length
       );
       const to = `${directory}${expectedName}`;
-      renames.push({ id: item.id, from: found.relativePath, to });
+      renames.push({ id: item.id, from: relPath, to });
       filePaths[item.id] = to;
-    } else if (found.relativePath !== item.file_path) {
-      filePaths[item.id] = found.relativePath;
+    } else if (relPath !== item.file_path) {
+      filePaths[item.id] = relPath;
     }
   }
 
   return { filePaths, renames, mismatches };
+}
+
+export interface DiskMembershipDiff {
+  /** Files on disk whose id is not yet in memory. */
+  added: DiskFileIdentifier[];
+  /** In-memory ids whose file no longer exists on disk. */
+  removedIds: string[];
+}
+
+/**
+ * Finds files added to or deleted from `manuscript/` and `lorebook/` on disk.
+ */
+export function diffDiskIdentifiers(
+  currentIds: Iterable<string>,
+  disk: DiskFileIdentifier[]
+): DiskMembershipDiff {
+  const known = new Set(currentIds);
+  const onDisk = new Set(disk.map((d) => d.id));
+  const added = disk
+    .filter((d) => !known.has(d.id))
+    .map((d) => ({
+      ...d,
+      relativePath: normalizeRelativePath(d),
+    }));
+  const removedIds: string[] = [];
+  for (const id of known) {
+    if (!onDisk.has(id)) removedIds.push(id);
+  }
+  return { added, removedIds };
 }

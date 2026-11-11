@@ -20,6 +20,7 @@ import { replaceWholeWordUnicode } from '@/lib/word-boundary';
 import { chapterFileNameForId, titleSlug } from '@/lib/chapter-file-name';
 import {
   reconcileIdentifiers,
+  diffDiskIdentifiers,
   type DiskFileIdentifier,
 } from '@/lib/project-file-sync';
 import { useAgentStore } from '@/stores/useAgentStore';
@@ -27,6 +28,10 @@ import {
   loadProject,
   saveChapterToDisk,
   saveEntityToDisk,
+  parsedToChapter,
+  parsedToEntity,
+  extractRelationsFromEntities,
+  type ParsedDocument,
 } from '@/lib/project-io';
 
 export type LeftActivityView =
@@ -91,6 +96,10 @@ export interface WorkspaceState {
   updateChapterMetadata: (chapterId: string, patch: Partial<ChapterDocument>) => void;
   updateEntity: (entityId: string, patch: Partial<LoreEntity>) => void;
   createEntity: (entity: LoreEntity) => void;
+  addRelation: (
+    edge: Omit<CharacterRelationEdge, 'id'> & { id?: string }
+  ) => void;
+  removeRelation: (relationId: string) => void;
   createChapter: (title: string) => void;
   reorderChapters: (fromIndex: number, toIndex: number) => void;
   applyRefactorRename: (
@@ -189,18 +198,62 @@ const debounceKey = (
   );
 };
 
+// --- Reconciliation with the disk (throttled) ---
+let lastReconcileAt = 0;
+let lastSelfWriteAt = 0;
+
+const hasAnyPendingSave = (): boolean =>
+  chapterSaveTimers.size > 0 || entitySaveTimers.size > 0;
+
+/** Embeds outgoing `relations` of `sourceId` into that entity's `extra_frontmatter.relations`. */
+const syncEntityOutgoingRelations = (
+  entities: LoreEntity[],
+  relations: CharacterRelationEdge[],
+  sourceId: string
+): LoreEntity[] => {
+  const outgoing = relations
+    .filter((r) => r.source_id === sourceId)
+    .map((r) => ({
+      id: r.id,
+      target_id: r.target_id,
+      relation_type: r.relation_type,
+      label: r.label,
+      min_chapter: r.min_chapter,
+      ...(r.max_chapter !== undefined ? { max_chapter: r.max_chapter } : {}),
+    }));
+  return entities.map((e) =>
+    e.id === sourceId
+      ? {
+          ...e,
+          extra_frontmatter: {
+            ...(e.extra_frontmatter ?? {}),
+            relations: outgoing,
+          },
+          updated_at: new Date().toISOString(),
+        }
+      : e
+  );
+};
+
 const persistChapter = (chapterId: string) => {
   if (!getStateRef) return;
   const s = getStateRef();
   if (!isTauri() || s.isDemoData || !s.rootPath) return;
+  useWorkspaceStore.setState({ saveStatus: 'saving' });
   debounceKey(chapterSaveTimers, chapterId, 1000, () => {
     const cur = getStateRef!();
     const ch = cur.chapters.find((c) => c.id === chapterId);
     if (!ch || !cur.rootPath) return;
     useWorkspaceStore.setState({ saveStatus: 'saving' });
+    lastSelfWriteAt = Date.now();
     saveChapterToDisk(cur.rootPath, ch).then((res) => {
+      lastSelfWriteAt = Date.now();
       useWorkspaceStore.setState((prev) => ({
-        saveStatus: res.ok ? 'saved' : 'unsaved',
+        saveStatus: res.ok
+          ? hasAnyPendingSave()
+            ? 'saving'
+            : 'saved'
+          : 'unsaved',
         ipcNotice: res.ok
           ? prev.ipcNotice
           : prev.ipcNotice ?? `Không lưu được ${ch.file_path}: ${res.error ?? 'unknown error'}`,
@@ -214,20 +267,27 @@ const persistEntity = (entityId: string) => {
   if (!getStateRef) return;
   const s = getStateRef();
   if (!isTauri() || s.isDemoData || !s.rootPath) return;
+  useWorkspaceStore.setState({ saveStatus: 'saving' });
   debounceKey(entitySaveTimers, entityId, 1500, () => {
     const cur = getStateRef!();
     const entity = cur.entities.find((e) => e.id === entityId);
     if (!entity || !cur.rootPath) return;
+    useWorkspaceStore.setState({ saveStatus: 'saving' });
+    lastSelfWriteAt = Date.now();
     saveEntityToDisk(cur.rootPath, entity).then((res) => {
-      if (!res.ok) {
-        useWorkspaceStore.setState((prev) => ({
-          ipcNotice:
-            prev.ipcNotice ??
+      lastSelfWriteAt = Date.now();
+      useWorkspaceStore.setState((prev) => ({
+        saveStatus: res.ok
+          ? hasAnyPendingSave()
+            ? 'saving'
+            : 'saved'
+          : 'unsaved',
+        ipcNotice: res.ok
+          ? prev.ipcNotice
+          : prev.ipcNotice ??
             `Không lưu được ${entity.file_path}: ${res.error ?? 'unknown error'}`,
-        }));
-        return;
-      }
-      scheduleSqliteSync();
+      }));
+      if (res.ok) scheduleSqliteSync();
     });
   });
 };
@@ -299,11 +359,13 @@ const renameProjectFile = (
   toRelativePath: string,
   restore: () => void
 ) => {
+  lastSelfWriteAt = Date.now();
   void invokeSafe('rename_markdown_file', {
     projectRoot,
     fromRelativePath,
     toRelativePath,
   }).then((res) => {
+    lastSelfWriteAt = Date.now();
     if (res.ok) return;
     restore();
     useWorkspaceStore.setState((prev) => ({
@@ -322,9 +384,6 @@ const siblingFilePath = (currentPath: string, nextFileName: string): string => {
 
 // --- SQLite index sync (debounced; only for real desktop projects) ---
 let sqliteSyncTimer: ReturnType<typeof setTimeout> | null = null;
-
-// --- Reconciliation with the disk (throttled) ---
-let lastReconcileAt = 0;
 
 /** Rebuilds `.novelforge/index.sqlite` shortly after a file was written. */
 const scheduleSqliteSync = () => {
@@ -349,7 +408,9 @@ const flushChapterSave = async (chapterId: string): Promise<boolean> => {
   const ch = cur.chapters.find((c) => c.id === chapterId);
   if (!ch || !cur.rootPath || !canWriteToDisk(cur)) return true;
 
+  lastSelfWriteAt = Date.now();
   const res = await saveChapterToDisk(cur.rootPath, ch);
+  lastSelfWriteAt = Date.now();
   if (res.ok) {
     scheduleSqliteSync();
     return true;
@@ -373,7 +434,9 @@ const flushEntitySave = async (entityId: string): Promise<boolean> => {
   const entity = cur.entities.find((e) => e.id === entityId);
   if (!entity || !cur.rootPath || !canWriteToDisk(cur)) return true;
 
+  lastSelfWriteAt = Date.now();
   const res = await saveEntityToDisk(cur.rootPath, entity);
+  lastSelfWriteAt = Date.now();
   if (res.ok) {
     scheduleSqliteSync();
     return true;
@@ -725,6 +788,47 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         persistEntity(entity.id);
       },
 
+      addRelation: (edge) => {
+        const newRel: CharacterRelationEdge = {
+          id: edge.id || `rel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          source_id: edge.source_id,
+          target_id: edge.target_id,
+          relation_type: edge.relation_type,
+          label: edge.label,
+          min_chapter: edge.min_chapter,
+          max_chapter: edge.max_chapter,
+        };
+        set((state) => {
+          const nextRelations = [...state.relations, newRel];
+          return {
+            relations: nextRelations,
+            entities: syncEntityOutgoingRelations(
+              state.entities,
+              nextRelations,
+              edge.source_id
+            ),
+          };
+        });
+        persistEntity(edge.source_id);
+      },
+
+      removeRelation: (relationId) => {
+        const current = get().relations.find((r) => r.id === relationId);
+        if (!current) return;
+        set((state) => {
+          const nextRelations = state.relations.filter((r) => r.id !== relationId);
+          return {
+            relations: nextRelations,
+            entities: syncEntityOutgoingRelations(
+              state.entities,
+              nextRelations,
+              current.source_id
+            ),
+          };
+        });
+        persistEntity(current.source_id);
+      },
+
       createChapter: (title) => {
         const state = get();
         const usedIds = new Set(state.chapters.map((c) => c.id));
@@ -890,7 +994,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
       },
 
-      reloadCurrentProjectFromDisk: async () => {        const s = get();
+      reloadCurrentProjectFromDisk: async () => {
+        const s = get();
         if (!isTauri() || s.isDemoData || !s.rootPath) return;
 
         const res = await loadProject(s.rootPath);
@@ -909,6 +1014,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           projectName: res.data.projectName,
           chapters: res.data.chapters,
           entities: res.data.entities,
+          relations: res.data.relations,
           snapshots: snaps.ok ? snaps.data : s.snapshots,
           saveStatus: 'saved',
         });
@@ -1019,6 +1125,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             set({
               chapters: reload.data.chapters,
               entities: reload.data.entities,
+              relations: reload.data.relations,
               saveStatus: 'saved',
               ipcNotice: 'Đã khôi phục snapshot (chỉ manuscript/ và lorebook/).',
             });
@@ -1074,13 +1181,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       reconcileWithDisk: async () => {
         const s = get();
         if (!isTauri() || s.isDemoData || !s.rootPath) return;
+        // Ignore file watcher events triggered by our own recent disk writes.
+        if (Date.now() - lastSelfWriteAt < 1500) return;
         // Alt-tabbing must not trigger a scan on every focus.
-        if (Date.now() - lastReconcileAt < 5000) return;
+        if (Date.now() - lastReconcileAt < 2000) return;
         lastReconcileAt = Date.now();
+        const projectRoot = s.rootPath;
 
         const res = await invokeSafe<DiskFileIdentifier[]>(
           'scan_project_identifiers',
-          { projectRoot: s.rootPath }
+          { projectRoot }
         );
         if (!res.ok) return;
 
@@ -1094,7 +1204,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         // A lorebook file whose name drifted from the title is renamed back.
         for (const rename of renames) {
-          renameProjectFile(s.rootPath, rename.from, rename.to, () => {
+          renameProjectFile(projectRoot, rename.from, rename.to, () => {
             useWorkspaceStore.setState((state) => ({
               entities: state.entities.map((e) =>
                 e.id === rename.id ? { ...e, file_path: rename.from } : e
@@ -1103,7 +1213,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           });
         }
 
-        // Only the paths are reconciled — the text in memory stays untouched.
+        // Reconcile paths for moved files.
         if (Object.keys(filePaths).length > 0) {
           set((state) => ({
             chapters: state.chapters.map((c) =>
@@ -1113,6 +1223,109 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               filePaths[e.id] ? { ...e, file_path: filePaths[e.id] } : e
             ),
           }));
+        }
+
+        // Reconcile newly added, deleted, and externally edited files.
+        const currentIds = [
+          ...get().chapters.map((c) => c.id),
+          ...get().entities.map((e) => e.id),
+        ];
+        const { added, removedIds } = diffDiskIdentifiers(currentIds, res.data);
+        const safeRemoved = new Set(
+          removedIds.filter(
+            (id) => !chapterSaveTimers.has(id) && !entitySaveTimers.has(id)
+          )
+        );
+
+        const newChapters: ChapterDocument[] = [];
+        const newEntities: LoreEntity[] = [];
+        for (const item of added) {
+          const read = await invokeSafe<ParsedDocument>('read_markdown_file', {
+            projectRoot,
+            relativePath: item.relativePath,
+          });
+          if (!read.ok) continue;
+          if (item.relativePath.startsWith('manuscript/')) {
+            newChapters.push(parsedToChapter(item.relativePath, read.data));
+          } else if (item.relativePath.startsWith('lorebook/')) {
+            newEntities.push(parsedToEntity(item.relativePath, read.data));
+          }
+        }
+
+        // Check existing files that have no pending local save for external content edits.
+        const updatedChaptersById = new Map<string, ChapterDocument>();
+        const updatedEntitiesById = new Map<string, LoreEntity>();
+        for (const item of res.data) {
+          if (added.some((a) => a.id === item.id)) continue;
+          if (chapterSaveTimers.has(item.id) || entitySaveTimers.has(item.id)) {
+            continue;
+          }
+          const existingCh = get().chapters.find((c) => c.id === item.id);
+          const existingEnt = get().entities.find((e) => e.id === item.id);
+          if (!existingCh && !existingEnt) continue;
+
+          const read = await invokeSafe<ParsedDocument>('read_markdown_file', {
+            projectRoot,
+            relativePath: filePaths[item.id] ?? item.relativePath,
+          });
+          if (!read.ok) continue;
+
+          if (existingCh) {
+            const diskCh = parsedToChapter(
+              filePaths[item.id] ?? item.relativePath,
+              read.data
+            );
+            if (
+              diskCh.paragraphs.join('\n\n') !==
+                existingCh.paragraphs.join('\n\n') ||
+              diskCh.title !== existingCh.title ||
+              diskCh.status !== existingCh.status
+            ) {
+              updatedChaptersById.set(item.id, diskCh);
+            }
+          } else if (existingEnt) {
+            const diskEnt = parsedToEntity(
+              filePaths[item.id] ?? item.relativePath,
+              read.data
+            );
+            if (
+              diskEnt.body !== existingEnt.body ||
+              diskEnt.title !== existingEnt.title ||
+              diskEnt.status !== existingEnt.status
+            ) {
+              updatedEntitiesById.set(item.id, diskEnt);
+            }
+          }
+        }
+
+        if (
+          safeRemoved.size > 0 ||
+          newChapters.length > 0 ||
+          newEntities.length > 0 ||
+          updatedChaptersById.size > 0 ||
+          updatedEntitiesById.size > 0
+        ) {
+          set((state) => {
+            const nextChapters = [
+              ...state.chapters
+                .filter((c) => !safeRemoved.has(c.id))
+                .map((c) => updatedChaptersById.get(c.id) ?? c),
+              ...newChapters,
+            ].sort(
+              (a, b) => a.act_id.localeCompare(b.act_id) || a.order - b.order
+            );
+            const nextEntities = [
+              ...state.entities
+                .filter((e) => !safeRemoved.has(e.id))
+                .map((e) => updatedEntitiesById.get(e.id) ?? e),
+              ...newEntities,
+            ];
+            return {
+              chapters: nextChapters,
+              entities: nextEntities,
+              relations: extractRelationsFromEntities(nextEntities),
+            };
+          });
         }
 
         if (mismatches.length > 0) {
@@ -1182,7 +1395,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             rootPath: picked,
             chapters: res.data.chapters,
             entities: res.data.entities,
-            relations: [],
+            relations: res.data.relations,
             snapshots: [],
             availableBranches: ['main'],
             activeBranch: 'main',

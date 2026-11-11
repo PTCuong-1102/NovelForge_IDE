@@ -91,8 +91,23 @@ export const StatusBar: React.FC = () => {
         </button>
 
         <div className="flex items-center gap-1 text-primary font-medium">
-          <FileCheck size={13} className="semantic-success-text" />
-          <span>{saveStatus === 'saved' ? 'Đã lưu' : 'Đang lưu...'}</span>
+          {saveStatus === 'unsaved' ? (
+            <>
+              <AlertTriangle size={13} className="semantic-error-text" />
+              <span className="semantic-error-text">Lỗi lưu file</span>
+            </>
+          ) : (
+            <>
+              <FileCheck size={13} className="semantic-success-text" />
+              <span>
+                {saveStatus === 'saving'
+                  ? 'Đang lưu...'
+                  : isDemoData
+                  ? 'Đã lưu (Bộ nhớ)'
+                  : 'Đã lưu'}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="hidden md:flex items-center gap-1.5 text-muted text-[11px]">

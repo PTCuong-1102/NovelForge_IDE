@@ -192,7 +192,7 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
             .strip_prefix(project_root)
             .unwrap_or(file_path)
             .to_string_lossy()
-            .to_string();
+            .replace('\\', "/");
 
         let id = parsed
             .frontmatter
@@ -317,7 +317,7 @@ pub fn sync_workspace_to_sqlite(project_root: &Path) -> Result<WorkspaceSyncSumm
             .strip_prefix(project_root)
             .unwrap_or(file_path)
             .to_string_lossy()
-            .to_string();
+            .replace('\\', "/");
 
         let chapter_id = parsed
             .frontmatter

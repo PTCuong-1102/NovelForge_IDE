@@ -83,11 +83,26 @@ pub async fn read_project_tree(project_root: String) -> Result<Vec<FileTreeNode>
     scan_dir_recursive(root, &mut file_count)
 }
 
+fn ensure_markdown_target(relative_path: &str) -> Result<(), String> {
+    let is_md = Path::new(relative_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("md"))
+        .unwrap_or(false);
+    if !is_md {
+        return Err(format!(
+            "Security violation: only Markdown (.md) files are allowed, got {relative_path}"
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn read_markdown_file(
     project_root: String,
     relative_path: String,
 ) -> Result<ParsedDocument, String> {
+    ensure_markdown_target(&relative_path)?;
     let safe_path = canonical_within(Path::new(&project_root), Path::new(&relative_path))
         .map_err(|e| format!("Security violation: {}", e))?;
 
@@ -105,6 +120,7 @@ pub async fn write_markdown_file(
     ordered_keys: Option<Vec<String>>,
     body: String,
 ) -> Result<(), String> {
+    ensure_markdown_target(&relative_path)?;
     let safe_path = canonical_within(Path::new(&project_root), Path::new(&relative_path))
         .map_err(|e| format!("Security violation: {}", e))?;
 
@@ -129,6 +145,8 @@ pub async fn rename_markdown_file(
     from_relative_path: String,
     to_relative_path: String,
 ) -> Result<(), String> {
+    ensure_markdown_target(&from_relative_path)?;
+    ensure_markdown_target(&to_relative_path)?;
     let root = Path::new(&project_root);
     let from = canonical_within(root, Path::new(&from_relative_path))
         .map_err(|e| format!("Security violation: {e}"))?;
@@ -154,6 +172,7 @@ pub async fn rename_markdown_file(
 /// frontmatter id — used to notice files renamed outside the application.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectFileIdentifier {
+    #[serde(rename = "relativePath", alias = "relative_path")]
     pub relative_path: String,
     pub id: String,
     pub title: String,
@@ -345,5 +364,45 @@ mod tests {
             std::fs::read_to_string(dir.path().join("ch-02.md")).unwrap(),
             "hai"
         );
+    }
+
+    #[test]
+    fn project_file_identifier_serializes_relative_path_as_camel_case_for_ipc() {
+        let item = ProjectFileIdentifier {
+            relative_path: "manuscript/act-01/ch-01.md".to_string(),
+            id: "ch_01".to_string(),
+            title: "Mở đầu".to_string(),
+        };
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(
+            json.get("relativePath").and_then(|v| v.as_str()),
+            Some("manuscript/act-01/ch-01.md")
+        );
+    }
+
+    #[tokio::test]
+    async fn write_and_rename_markdown_file_reject_non_md_and_novelforge_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+
+        let write_non_md = write_markdown_file(
+            root.clone(),
+            "novel.toml".to_string(),
+            HashMap::new(),
+            None,
+            "hacked".to_string(),
+        )
+        .await;
+        assert!(write_non_md.is_err(), "non-.md write must be rejected");
+
+        let write_internal = write_markdown_file(
+            root.clone(),
+            ".novelforge/hacked.md".to_string(),
+            HashMap::new(),
+            None,
+            "hacked".to_string(),
+        )
+        .await;
+        assert!(write_internal.is_err(), ".novelforge write must be rejected");
     }
 }

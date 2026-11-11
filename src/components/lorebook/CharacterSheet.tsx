@@ -17,7 +17,7 @@ interface CharacterSheetProps {
 }
 
 export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
-  const { updateEntity } = useWorkspaceStore();
+  const { updateEntity, flushAllSaves } = useWorkspaceStore();
   const { openRefactorModal, openFindUsages } = useEditorStore();
 
   const [title, setTitle] = useState(entity.title);
@@ -31,6 +31,13 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
   const [personality, setPersonality] = useState(entity.personality || '');
   const [body, setBody] = useState(entity.body || '');
   const [idDraft, setIdDraft] = useState(entity.id);
+  const [justSaved, setJustSaved] = useState(false);
+
+  const parseAliases = (raw: string): string[] =>
+    raw
+      .split(',')
+      .map((a) => a.trim())
+      .filter(Boolean);
 
   useEffect(() => {
     setIdDraft(entity.id);
@@ -47,11 +54,15 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
     updateEntity(entity.id, { id: next });
   };
 
-  // Re-sync the form when the entity is replaced or renamed from the outside
-  // (tab switch, Refactor Rename) — a stale form would overwrite the new values.
+  // Re-sync local state when switching entities or when external actions
+  // (Refactor Rename, disk reload) update the entity.
   useEffect(() => {
     setTitle(entity.title);
-    setAliases(entity.aliases.join(', '));
+    setAliases((prev) =>
+      parseAliases(prev).join('|') === entity.aliases.join('|')
+        ? prev
+        : entity.aliases.join(', ')
+    );
     setStatus(entity.status || 'alive');
     setFaction(entity.faction || '');
     setRole(entity.role || '');
@@ -60,13 +71,17 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
     setBody(entity.body || '');
   }, [entity.id, entity.updated_at]);
 
-  const handleSave = () => {
+  const commitTitleIfNeeded = (nextTitle: string) => {
+    const trimmed = nextTitle.trim();
+    if (trimmed && trimmed !== entity.title) {
+      updateEntity(entity.id, { title: trimmed });
+    }
+  };
+
+  const handleSave = async () => {
     updateEntity(entity.id, {
-      title,
-      aliases: aliases
-        .split(',')
-        .map((a) => a.trim())
-        .filter(Boolean),
+      title: title.trim() || entity.title,
+      aliases: parseAliases(aliases),
       status: status as LoreEntity['status'],
       faction,
       role,
@@ -74,6 +89,9 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
       personality,
       body,
     });
+    await flushAllSaves();
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 1800);
   };
 
   return (
@@ -107,6 +125,13 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
+                  onBlur={(e) => commitTitleIfNeeded(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitTitleIfNeeded((e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
                   className="text-xl font-bold bg-transparent text-primary focus:outline-none focus:ring-1 focus:ring-accent rounded px-1"
                 />
                 <span
@@ -146,7 +171,7 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
               className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
             >
               <Save size={13} />
-              <span>Lưu hồ sơ</span>
+              <span>{justSaved ? 'Đã lưu!' : 'Lưu hồ sơ'}</span>
             </button>
           </div>
         </div>
@@ -166,7 +191,11 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
             <input
               type="text"
               value={aliases}
-              onChange={(e) => setAliases(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setAliases(next);
+                updateEntity(entity.id, { aliases: parseAliases(next) });
+              }}
               className="bg-elevated border border-border rounded-lg px-2.5 py-2 text-primary font-medium focus:outline-none focus:border-accent"
               placeholder="VD: Tiểu Linh, Đặc vụ số 7"
             />
@@ -207,16 +236,16 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
             </label>
             <select
               value={status}
-              onChange={(e) =>
-                setStatus(
-                  e.target.value as
-                    | 'alive'
-                    | 'dead'
-                    | 'missing'
-                    | 'active'
-                    | 'destroyed'
-                )
-              }
+              onChange={(e) => {
+                const next = e.target.value as
+                  | 'alive'
+                  | 'dead'
+                  | 'missing'
+                  | 'active'
+                  | 'destroyed';
+                setStatus(next);
+                updateEntity(entity.id, { status: next });
+              }}
               className="bg-elevated border border-border rounded-lg px-2.5 py-2 text-primary font-medium focus:outline-none focus:border-accent"
             >
               <option value="alive">Còn sống (alive)</option>
@@ -232,7 +261,11 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
             <input
               type="text"
               value={faction}
-              onChange={(e) => setFaction(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setFaction(next);
+                updateEntity(entity.id, { faction: next });
+              }}
               className="bg-elevated border border-border rounded-lg px-2.5 py-2 text-primary font-medium focus:outline-none focus:border-accent"
               placeholder="VD: Cục An Ninh Mạng Aegis"
             />
@@ -245,7 +278,11 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
             <input
               type="text"
               value={role}
-              onChange={(e) => setRole(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setRole(next);
+                updateEntity(entity.id, { role: next });
+              }}
               className="bg-elevated border border-border rounded-lg px-2.5 py-2 text-primary font-medium focus:outline-none focus:border-accent"
               placeholder="VD: Nhân vật chính (Protagonist)"
             />
@@ -258,7 +295,11 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
             <input
               type="text"
               value={appearance}
-              onChange={(e) => setAppearance(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setAppearance(next);
+                updateEntity(entity.id, { appearance: next });
+              }}
               className="bg-elevated border border-border rounded-lg px-2.5 py-2 text-primary font-medium focus:outline-none focus:border-accent"
               placeholder="VD: Tóc ngắn ngang vai, vết sẹo nhỏ ở cổ tay trái"
             />
@@ -271,7 +312,11 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
             <input
               type="text"
               value={personality}
-              onChange={(e) => setPersonality(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setPersonality(next);
+                updateEntity(entity.id, { personality: next });
+              }}
               className="bg-elevated border border-border rounded-lg px-2.5 py-2 text-primary font-medium focus:outline-none focus:border-accent"
               placeholder="VD: Lạnh lùng, quyết đoán, sợ không gian hẹp"
             />
@@ -298,7 +343,11 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ entity }) => {
 
           <textarea
             value={body}
-            onChange={(e) => setBody(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setBody(next);
+              updateEntity(entity.id, { body: next });
+            }}
             rows={12}
             className="w-full bg-elevated/50 border border-border rounded-xl p-3.5 text-primary text-sm font-serif leading-relaxed focus:outline-none focus:border-accent resize-y"
             placeholder="Viết tiểu sử chi tiết, các mối quan hệ, bảng kỹ năng..."
