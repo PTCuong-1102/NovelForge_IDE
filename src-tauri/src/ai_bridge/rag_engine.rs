@@ -43,7 +43,9 @@ pub fn encode_f32_vec_le(vec: &[f32]) -> Vec<u8> {
 /// Decodes a little-endian `BLOB` from SQLite (`sqlite-vec` format) back into `Vec<f32>`.
 pub fn decode_f32_vec_le(bytes: &[u8]) -> Vec<f32> {
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
         .collect()
 }

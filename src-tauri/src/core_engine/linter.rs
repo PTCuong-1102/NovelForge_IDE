@@ -116,7 +116,7 @@ pub fn scan_implicit_entities(
     }
 
     // Sort longest patterns first so LeftmostLongest prioritizes full names over short aliases
-    candidate_tuples.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    candidate_tuples.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
 
     // Both sides are lowercased: Aho-Corasick only folds ASCII case.
     let patterns: Vec<String> = candidate_tuples

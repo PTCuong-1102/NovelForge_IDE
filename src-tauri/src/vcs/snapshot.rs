@@ -43,7 +43,7 @@ fn count_words_in_dir(dir: &Path) -> usize {
             let path = entry.path();
             if path.is_dir() {
                 total += count_words_in_dir(&path);
-            } else if path.extension().map_or(false, |ext| ext == "md") {
+            } else if path.extension().is_some_and(|ext| ext == "md") {
                 if let Ok(content) = std::fs::read_to_string(&path) {
                     total +=
                         crate::core_engine::parser::parse_markdown_with_frontmatter(&content)
@@ -133,7 +133,7 @@ pub fn create_snapshot(
     // Stage manuscript and lorebook only; never touch anything else.
     // `update_all` first so files deleted from disk also leave the index.
     index
-        .update_all(&[Path::new("manuscript"), Path::new("lorebook")], None)
+        .update_all([Path::new("manuscript"), Path::new("lorebook")], None)
         .map_err(|e| GitError::new("GIT_FAILURE", e.to_string()))?;
     index
         .add_all(["manuscript", "lorebook"].iter(), IndexAddOption::DEFAULT, None)
@@ -312,7 +312,7 @@ pub fn restore_snapshot(
         for oid in revwalk.flatten() {
             if oid.to_string().starts_with(raw) {
                 if let Ok(c) = repo.find_commit(oid) {
-                    if c.message().map_or(false, |m| m.contains("NovelForge-Snapshot: true")) {
+                    if c.message().is_some_and(|m| m.contains("NovelForge-Snapshot: true")) {
                         found = Some(c);
                         break;
                     }
