@@ -274,16 +274,16 @@ NovelForge IDE is designed for lightning-fast keyboard-driven navigation, mirror
 ## 🧪 Testing & Verification
 
 ```bash
-npm test                # frontend: parser, linter, publishers (72 tests)
+npm test                # frontend: parser, linter, publishers (80 tests)
 npm run typecheck       # tsc --noEmit
 npm run verify:utf8     # kiểm tra toàn bộ source là UTF-8 hợp lệ
-cd src-tauri && cargo test   # Rust: parser, linter, paths, git snapshots, sync→RAG (29 tests)
+cd src-tauri && cargo test   # Rust: parser, linter, paths, git snapshots, sync→RAG (32 tests)
 ```
 
 ### Verified (2026-11-11)
-* `npm test` — **72/72 pass** (gồm round-trip CRLF-safe của `manuscript/*.md` thật).
+* `npm test` — **80/80 pass** (gồm round-trip CRLF-safe của `manuscript/*.md` thật).
 * `npm run build` — static export tới `out/` thành công; `npm run typecheck` — exit 0.
-* `cargo test` — **29/29 pass**, gồm: path-traversal bị chặn, git snapshot create/list/restore
+* `cargo test` — **32/32 pass**, gồm: path-traversal bị chặn, git snapshot create/list/restore
   (restore chỉ ghi đè `manuscript/` & `lorebook/`), và pipeline
   `sync_workspace_to_sqlite` → hybrid RAG search tìm được nhân vật đã seed.
 * MCP server kiểm chứng bằng pipe JSON-RPC thật (`initialize`, `tools/list`, `tools/call`):
