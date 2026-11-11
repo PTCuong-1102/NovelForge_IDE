@@ -153,4 +153,30 @@ describe('Workspace consistency guard tests', () => {
       'the file must be renamed on disk'
     );
   });
+
+  it('9. The lorebook file name follows the title of the entity', () => {
+    const store = read('src/stores/useWorkspaceStore.ts');
+    assert(
+      store.includes('titleSlug(nextTitle!)'),
+      'the lorebook file name must follow the new title'
+    );
+  });
+
+  it('10. Files renamed outside the application are noticed', () => {
+    const page = read('src/app/page.tsx');
+    assert(
+      page.includes("window.addEventListener('focus'"),
+      'the app must watch for the window focus'
+    );
+    assert(
+      page.includes('reconcileWithDisk'),
+      'the app must reconcile with the disk'
+    );
+
+    const store = read('src/stores/useWorkspaceStore.ts');
+    assert(
+      store.includes("'scan_project_identifiers'"),
+      'the store must scan the identifiers of the project'
+    );
+  });
 });

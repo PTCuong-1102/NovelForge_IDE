@@ -132,7 +132,7 @@ pub fn save_markdown_document(
     Ok(compute_content_hash(&serialized))
 }
 
-fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
+pub fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();

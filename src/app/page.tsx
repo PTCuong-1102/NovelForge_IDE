@@ -50,6 +50,7 @@ export default function WorkbenchPage() {
     reloadCurrentProjectFromDisk,
     activeActivity,
     setActiveActivity,
+    reconcileWithDisk,
   } = useWorkspaceStore();
 
   const {
@@ -81,6 +82,16 @@ export default function WorkbenchPage() {
       setActiveActivity('search');
     }
   }, [findUsagesEntityId, activeActivity, setActiveActivity]);
+
+  // The disk is the source of truth: notice files renamed outside the app.
+  useEffect(() => {
+    if (!isTauri() || !rootPath || isDemoData) return;
+    const handleFocus = () => {
+      void reconcileWithDisk();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [rootPath, isDemoData, reconcileWithDisk]);
 
   // Global Keyboard Shortcuts (VS Code & IntelliJ Ergonomics)
   useEffect(() => {

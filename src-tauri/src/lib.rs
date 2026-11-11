@@ -16,6 +16,7 @@ pub fn run() {
             fs_cmd::read_markdown_file,
             fs_cmd::write_markdown_file,
             fs_cmd::rename_markdown_file,
+            fs_cmd::scan_project_identifiers,
             lore_cmd::list_entities,
             lore_cmd::upsert_entity,
             lore_cmd::find_entity_usages,

@@ -1,10 +1,11 @@
 use crate::core_engine::parser::{
-    parse_markdown_with_frontmatter, serialize_markdown_with_ordered_frontmatter, ParsedDocument,
+    parse_frontmatter, parse_markdown_with_frontmatter,
+    serialize_markdown_with_ordered_frontmatter, ParsedDocument,
 };
 use crate::core_engine::paths::canonical_within;
 use crate::core_engine::storage::{
-    ensure_project_workspace, sync_workspace_to_sqlite, ProjectWorkspaceLayout,
-    WorkspaceSyncSummary,
+    collect_markdown_files, ensure_project_workspace, sync_workspace_to_sqlite,
+    ProjectWorkspaceLayout, WorkspaceSyncSummary,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -149,6 +150,59 @@ pub async fn rename_markdown_file(
     Ok(())
 }
 
+/// Identifies a Markdown file of the project by its relative path and its
+/// frontmatter id — used to notice files renamed outside the application.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectFileIdentifier {
+    pub relative_path: String,
+    pub id: String,
+    pub title: String,
+}
+
+#[tauri::command]
+pub async fn scan_project_identifiers(
+    project_root: String,
+) -> Result<Vec<ProjectFileIdentifier>, String> {
+    let root = Path::new(&project_root);
+    let mut files = Vec::new();
+    for dir in ["manuscript", "lorebook"] {
+        collect_markdown_files(&root.join(dir), &mut files);
+    }
+
+    let mut identifiers = Vec::new();
+    for path in files {
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let frontmatter = parse_frontmatter(&raw);
+        let id = frontmatter
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if id.is_empty() {
+            continue;
+        }
+        let title = frontmatter
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let relative_path = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        identifiers.push(ProjectFileIdentifier {
+            relative_path,
+            id,
+            title,
+        });
+    }
+
+    Ok(identifiers)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,6 +246,40 @@ mod tests {
         assert!(written.contains("# Chương 1: Mở đầu"), "heading lost");
         assert!(written.contains("***"), "scene break lost");
         assert!(written.contains("## Cảnh 2"), "sub-heading lost");
+    }
+
+    #[tokio::test]
+    async fn scan_project_identifiers_lists_every_file_with_its_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        std::fs::create_dir_all(dir.path().join("manuscript/act-01")).unwrap();
+        std::fs::create_dir_all(dir.path().join("lorebook/characters")).unwrap();
+        std::fs::write(
+            dir.path().join("manuscript/act-01/ch-01.md"),
+            "---\nid: ch_01\ntitle: Mở đầu\n---\n\nNội dung.",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("lorebook/characters/linh.md"),
+            "---\nid: char_01\ntitle: Linh\n---\n\nHồ sơ.",
+        )
+        .unwrap();
+
+        let identifiers = scan_project_identifiers(root).await.unwrap();
+        assert_eq!(identifiers.len(), 2);
+
+        let chapter = identifiers
+            .iter()
+            .find(|i| i.id == "ch_01")
+            .expect("the chapter must be listed");
+        assert_eq!(chapter.relative_path, "manuscript/act-01/ch-01.md");
+        assert_eq!(chapter.title, "Mở đầu");
+
+        let entity = identifiers
+            .iter()
+            .find(|i| i.id == "char_01")
+            .expect("the entity must be listed");
+        assert_eq!(entity.relative_path, "lorebook/characters/linh.md");
     }
 
     #[tokio::test]

@@ -248,6 +248,15 @@ pub fn parse_markdown_with_frontmatter(raw: &str) -> ParsedDocument {
     }
 }
 
+/// Reads only the YAML frontmatter of a Markdown document.
+pub fn parse_frontmatter(raw: &str) -> HashMap<String, serde_json::Value> {
+    let (yaml_opt, _) = split_frontmatter_and_body(raw);
+    let Some(yaml_str) = yaml_opt else {
+        return HashMap::new();
+    };
+    serde_yaml::from_str(&yaml_str).unwrap_or_default()
+}
+
 /// Serializes frontmatter and Markdown body back into a single lossless `.md` file string.
 /// Preserves key ordering when `ordered_keys` is provided, otherwise sorts keys deterministically.
 pub fn serialize_markdown_with_ordered_frontmatter(

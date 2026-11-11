@@ -458,4 +458,34 @@ test('Workspace store disk-save flush behaviour', async (t) => {
       'the chapter file name must follow the new id'
     );
   });
+
+  await t.test('18. renaming a character moves its lorebook file to the title slug', () => {
+    useWorkspaceStore.setState({
+      chapters: [],
+      entities: [
+        {
+          id: 'char_01',
+          entity_type: 'character',
+          title: 'Lâm Vũ Linh',
+          aliases: [],
+          file_path: 'lorebook/characters/lam-vu-linh.md',
+          status: 'alive',
+          tags: [],
+          summary: '',
+          body: '',
+          updated_at: '',
+        },
+      ],
+      relations: [],
+      openTabs: [],
+    });
+
+    useWorkspaceStore.getState().updateEntity('char_01', { title: 'Linh Hà' });
+
+    assert.strictEqual(
+      useWorkspaceStore.getState().entities[0].file_path,
+      'lorebook/characters/linh-ha.md',
+      'the lorebook file name must follow the new title'
+    );
+  });
 });

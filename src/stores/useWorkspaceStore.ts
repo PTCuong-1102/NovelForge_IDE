@@ -17,7 +17,11 @@ import {
 } from '@/lib/ipc-demo';
 import { isTauri, invokeSafe } from '@/lib/ipc';
 import { replaceWholeWordUnicode } from '@/lib/word-boundary';
-import { chapterFileNameForId } from '@/lib/chapter-file-name';
+import { chapterFileNameForId, titleSlug } from '@/lib/chapter-file-name';
+import {
+  reconcileIdentifiers,
+  type DiskFileIdentifier,
+} from '@/lib/project-file-sync';
 import { useAgentStore } from '@/stores/useAgentStore';
 import {
   loadProject,
@@ -107,6 +111,8 @@ export interface WorkspaceState {
   flushAllSaves: () => Promise<void>;
   /** Re-reads chapters, entities and snapshots from disk (desktop, real project). */
   reloadCurrentProjectFromDisk: () => Promise<void>;
+  /** Notices files that were renamed outside the application. */
+  reconcileWithDisk: () => Promise<void>;
   dismissIpcNotice: () => void;
   resetToDefaults: () => void;
   exportProjectJson: () => string;
@@ -283,8 +289,42 @@ const cancelPendingSave = (
   }
 };
 
+/**
+ * Renames a file inside the project. The rename is fire-and-forget: when it
+ * fails the caller restores the previous path and the user gets a notice.
+ */
+const renameProjectFile = (
+  projectRoot: string,
+  fromRelativePath: string,
+  toRelativePath: string,
+  restore: () => void
+) => {
+  void invokeSafe('rename_markdown_file', {
+    projectRoot,
+    fromRelativePath,
+    toRelativePath,
+  }).then((res) => {
+    if (res.ok) return;
+    restore();
+    useWorkspaceStore.setState((prev) => ({
+      ipcNotice:
+        prev.ipcNotice ??
+        `Không đổi tên được tệp ${fromRelativePath}: ${res.error}`,
+    }));
+  });
+};
+
+/** The new relative path of a file inside the same directory. */
+const siblingFilePath = (currentPath: string, nextFileName: string): string => {
+  const currentName = currentPath.split('/').pop() ?? currentPath;
+  return `${currentPath.slice(0, currentPath.length - currentName.length)}${nextFileName}`;
+};
+
 // --- SQLite index sync (debounced; only for real desktop projects) ---
 let sqliteSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+// --- Reconciliation with the disk (throttled) ---
+let lastReconcileAt = 0;
 
 /** Rebuilds `.novelforge/index.sqlite` shortly after a file was written. */
 const scheduleSqliteSync = () => {
@@ -604,6 +644,21 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             : entityId;
         const renamed = newId !== entityId;
 
+        // A lorebook file name follows the title slug.
+        const before = get();
+        const entity = before.entities.find((e) => e.id === entityId);
+        const nextTitle =
+          typeof patch.title === 'string' && patch.title.trim()
+            ? patch.title.trim()
+            : undefined;
+        const titleChanged = Boolean(
+          nextTitle && entity && nextTitle !== entity.title
+        );
+        const nextFilePath =
+          entity && titleChanged
+            ? siblingFilePath(entity.file_path, `${titleSlug(nextTitle!)}.md`)
+            : '';
+
         set((state) => {
           const entities = state.entities.map((e) =>
             e.id === entityId
@@ -611,6 +666,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                   ...e,
                   ...patch,
                   id: newId,
+                  file_path: nextFilePath || e.file_path,
                   updated_at: new Date().toISOString(),
                 }
               : e
@@ -648,6 +704,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         if (renamed) {
           cancelPendingSave(entitySaveTimers, entityId);
+        }
+        if (nextFilePath && entity && before.rootPath && canWriteToDisk(before)) {
+          const previousPath = entity.file_path;
+          renameProjectFile(before.rootPath, previousPath, nextFilePath, () => {
+            useWorkspaceStore.setState((state) => ({
+              entities: state.entities.map((e) =>
+                e.id === newId ? { ...e, file_path: previousPath } : e
+              ),
+            }));
+          });
         }
         persistEntity(newId);
       },
@@ -732,6 +798,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         selectedMatchIds,
         aliasMap
       ) => {
+        // The lorebook file name follows the title slug.
+        const before = get();
+        const renameTarget = before.entities.find((e) => e.id === entityId);
+        const renamedFilePath =
+          renameTarget && renameTarget.title !== newName
+            ? siblingFilePath(
+                renameTarget.file_path,
+                `${titleSlug(newName)}.md`
+              )
+            : '';
+
         set((state) => {
           const targetEntity = state.entities.find((e) => e.id === entityId);
           if (!targetEntity) return state;
@@ -772,6 +849,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                     targetEntity.title,
                     newName
                   ),
+                  file_path: renamedFilePath || e.file_path,
                   updated_at: new Date().toISOString(),
                 }
               : e
@@ -787,6 +865,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             openTabs: updatedTabs,
           };
         });
+
+        if (renamedFilePath && renameTarget && before.rootPath && canWriteToDisk(before)) {
+          const previousPath = renameTarget.file_path;
+          renameProjectFile(before.rootPath, previousPath, renamedFilePath, () => {
+            useWorkspaceStore.setState((state) => ({
+              entities: state.entities.map((e) =>
+                e.id === entityId ? { ...e, file_path: previousPath } : e
+              ),
+            }));
+          });
+        }
         persistAllChapters();
         persistEntity(entityId);
       },
@@ -801,8 +890,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
       },
 
-      reloadCurrentProjectFromDisk: async () => {
-        const s = get();
+      reloadCurrentProjectFromDisk: async () => {        const s = get();
         if (!isTauri() || s.isDemoData || !s.rootPath) return;
 
         const res = await loadProject(s.rootPath);
@@ -982,6 +1070,48 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }),
 
       switchBranch: (branchName) => set({ activeBranch: branchName }),
+
+      reconcileWithDisk: async () => {
+        const s = get();
+        if (!isTauri() || s.isDemoData || !s.rootPath) return;
+        // Alt-tabbing must not trigger a scan on every focus.
+        if (Date.now() - lastReconcileAt < 5000) return;
+        lastReconcileAt = Date.now();
+
+        const res = await invokeSafe<DiskFileIdentifier[]>(
+          'scan_project_identifiers',
+          { projectRoot: s.rootPath }
+        );
+        if (!res.ok) return;
+
+        const { filePaths, mismatches } = reconcileIdentifiers(
+          [
+            ...s.chapters.map((c) => ({ id: c.id, file_path: c.file_path })),
+            ...s.entities.map((e) => ({ id: e.id, file_path: e.file_path })),
+          ],
+          res.data
+        );
+
+        // Only the paths are reconciled — the text in memory stays untouched.
+        if (Object.keys(filePaths).length > 0) {
+          set((state) => ({
+            chapters: state.chapters.map((c) =>
+              filePaths[c.id] ? { ...c, file_path: filePaths[c.id] } : c
+            ),
+            entities: state.entities.map((e) =>
+              filePaths[e.id] ? { ...e, file_path: filePaths[e.id] } : e
+            ),
+          }));
+        }
+
+        if (mismatches.length > 0) {
+          set((prev) => ({
+            ipcNotice:
+              prev.ipcNotice ??
+              `${mismatches.length} tệp đã được đổi tên ngoài ứng dụng — mở chương và bấm "Lấy ID từ tên tệp" để đồng bộ ID.`,
+          }));
+        }
+      },
 
       dismissIpcNotice: () => set({ ipcNotice: null }),
 
